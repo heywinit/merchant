@@ -2,6 +2,9 @@
 node_modules/
 admin/node_modules/
 
+# Marketing site (separate repo)
+site/
+
 # Build
 dist/
 admin/dist/
