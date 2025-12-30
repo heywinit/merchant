@@ -1,14 +1,14 @@
 # merchant
 
-**Open-source commerce backend. Bring Stripe key, start selling.**
+**The open-source commerce backend for Cloudflare + Stripe. Bring a Stripe key. Start selling.**
 
-2 dependencies. D1 database. Zero config.
+A lightweight, API-first backend for products, inventory, checkout, and orders—designed to run on Cloudflare Workers with Stripe handling payments.
 
 ## Quick Start
 
 ```bash
 # 1. Clone & Install
-git clone https://github.com/your-username/merchant
+git clone https://github.com/ygwyg/merchant
 cd merchant && npm install
 
 # 2. Initialize (creates store + API keys)
