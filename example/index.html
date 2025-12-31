@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Merchant Store</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Space Grotesk', sans-serif; }
+  </style>
+</head>
+<body class="bg-black text-white min-h-screen">
+  
+  <!-- Header -->
+  <header class="border-b border-zinc-800">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="/" class="text-xl font-bold tracking-tight">MERCHANT</a>
+      <nav class="flex items-center gap-6">
+        <a href="/" class="text-sm text-zinc-400 hover:text-white transition-colors">Shop</a>
+        <a href="/cart.html" class="relative p-2 hover:bg-zinc-900 rounded-lg transition-colors">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+          </svg>
+          <span id="cart-count" class="absolute -top-1 -right-1 bg-white text-black text-xs font-bold w-5 h-5 rounded-full items-center justify-center hidden">0</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero -->
+  <section class="border-b border-zinc-800">
+    <div class="max-w-6xl mx-auto px-6 py-20 text-center">
+      <h1 class="text-5xl font-bold mb-4 tracking-tight">The Official Swag Store</h1>
+      <p class="text-zinc-400 text-lg max-w-md mx-auto">Premium apparel and accessories. Built with Merchant.</p>
+    </div>
+  </section>
+
+  <!-- Products -->
+  <main class="max-w-6xl mx-auto px-6 py-12">
+    
+    <!-- Loading State -->
+    <div id="loading" class="text-center py-20">
+      <div class="inline-block w-8 h-8 border-2 border-zinc-700 border-t-white rounded-full animate-spin"></div>
+      <p class="text-zinc-500 mt-4">Loading products...</p>
+    </div>
+
+    <!-- Error State -->
+    <div id="error" class="text-center py-20 hidden">
+      <div class="inline-flex items-center justify-center w-12 h-12 bg-red-500/10 rounded-full mb-4">
+        <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      <p class="text-red-400">Failed to load products</p>
+      <p class="text-zinc-500 text-sm mt-1">Make sure the Merchant API is running</p>
+    </div>
+
+    <!-- Products Grid -->
+    <div id="products-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
+      <!-- Products injected by JS -->
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-zinc-800 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-8 flex items-center justify-between text-sm text-zinc-500">
+      <p>Built with <a href="https://github.com/ygwyg/merchant" class="text-white hover:underline">Merchant</a></p>
+      <p>Vanilla JS • No Framework</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
+

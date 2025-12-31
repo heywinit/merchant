@@ -101,10 +101,16 @@ CREATE TABLE IF NOT EXISTS cart_items (
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
   store_id TEXT NOT NULL REFERENCES stores(id),
+  customer_id TEXT REFERENCES customers(id),
   number TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'paid' CHECK (status IN ('pending', 'paid', 'processing', 'shipped', 'delivered', 'refunded', 'canceled')),
   customer_email TEXT NOT NULL,
-  ship_to TEXT,
+  
+  -- Shipping info (captured at checkout time)
+  shipping_name TEXT,
+  shipping_phone TEXT,
+  ship_to TEXT,                 -- JSON: full address object
+  
   subtotal_cents INTEGER NOT NULL,
   tax_cents INTEGER NOT NULL,
   shipping_cents INTEGER NOT NULL DEFAULT 0,
@@ -173,6 +179,66 @@ CREATE TABLE IF NOT EXISTS discount_usage (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Customers (future-proofed for accounts)
+CREATE TABLE IF NOT EXISTS customers (
+  id TEXT PRIMARY KEY,
+  store_id TEXT NOT NULL REFERENCES stores(id),
+  email TEXT NOT NULL,
+  
+  -- Profile
+  name TEXT,
+  phone TEXT,
+  
+  -- Account fields (NULL = guest customer, filled = has account)
+  password_hash TEXT,
+  email_verified_at TEXT,
+  auth_provider TEXT,           -- 'email', 'google', 'github', etc. (for future OAuth)
+  auth_provider_id TEXT,        -- External provider user ID
+  
+  -- Preferences (future)
+  accepts_marketing INTEGER DEFAULT 0,
+  locale TEXT DEFAULT 'en',
+  
+  -- Extensibility
+  metadata TEXT,                -- JSON for custom data
+  
+  -- Stats (denormalized for quick access)
+  order_count INTEGER DEFAULT 0,
+  total_spent_cents INTEGER DEFAULT 0,
+  
+  -- Timestamps
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  last_order_at TEXT,
+  
+  UNIQUE(store_id, email)
+);
+
+-- Customer Addresses (multiple addresses per customer)
+CREATE TABLE IF NOT EXISTS customer_addresses (
+  id TEXT PRIMARY KEY,
+  customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+  
+  -- Label
+  label TEXT,                   -- "Home", "Work", "Office", etc.
+  is_default INTEGER DEFAULT 0,
+  
+  -- Address fields
+  name TEXT,                    -- Recipient name (can differ from customer name)
+  company TEXT,
+  line1 TEXT NOT NULL,
+  line2 TEXT,
+  city TEXT NOT NULL,
+  state TEXT,
+  postal_code TEXT NOT NULL,
+  country TEXT NOT NULL DEFAULT 'US',
+  phone TEXT,
+  
+  -- Timestamps
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Events (webhook deduplication)
 CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
@@ -217,12 +283,15 @@ CREATE INDEX IF NOT EXISTS idx_carts_store ON carts(store_id);
 CREATE INDEX IF NOT EXISTS idx_carts_expires ON carts(expires_at);
 CREATE INDEX IF NOT EXISTS idx_carts_discount_id ON carts(discount_id);
 CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id);
+CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_discounts_store_code ON discounts(store_id, code);
 CREATE INDEX IF NOT EXISTS idx_discounts_status ON discounts(status);
 CREATE INDEX IF NOT EXISTS idx_discount_usage_order ON discount_usage(order_id);
 CREATE INDEX IF NOT EXISTS idx_discount_usage_customer ON discount_usage(discount_id, customer_email);
 -- Unique constraint for idempotency: prevent duplicate discount_usage records for same order+discount
 CREATE UNIQUE INDEX IF NOT EXISTS idx_discount_usage_order_discount ON discount_usage(order_id, discount_id);
+CREATE INDEX IF NOT EXISTS idx_customers_store_email ON customers(store_id, email);
+CREATE INDEX IF NOT EXISTS idx_customer_addresses_customer ON customer_addresses(customer_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_store ON webhooks(store_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status);

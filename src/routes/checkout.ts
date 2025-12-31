@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import Stripe from 'stripe';
 import { getDb } from '../db';
 import { authMiddleware } from '../middleware/auth';
-import { ApiError, uuid, now, type Env, type AuthContext } from '../types';
+import { ApiError, uuid, now, isValidEmail, type Env, type AuthContext } from '../types';
 import { validateDiscount, calculateDiscount, type Discount } from './discounts';
 
 // ============================================================
@@ -16,13 +16,43 @@ export const checkout = new Hono<{
 
 checkout.use('*', authMiddleware);
 
+// GET /v1/carts/:cartId - Retrieve cart
+checkout.get('/:cartId', async (c) => {
+  const cartId = c.req.param('cartId');
+  const { store } = c.get('auth');
+  const db = getDb(c.env);
+
+  const [cart] = await db.query<any>(
+    `SELECT * FROM carts WHERE id = ? AND store_id = ?`,
+    [cartId, store.id]
+  );
+  if (!cart) throw ApiError.notFound('Cart not found');
+
+  const items = await db.query<any>(`SELECT * FROM cart_items WHERE cart_id = ?`, [cartId]);
+
+  return c.json({
+    id: cart.id,
+    status: cart.status,
+    currency: cart.currency,
+    customer_email: cart.customer_email,
+    items: items.map((i) => ({
+      sku: i.sku,
+      title: i.title,
+      qty: i.qty,
+      unit_price_cents: i.unit_price_cents,
+    })),
+    expires_at: cart.expires_at,
+    stripe_checkout_session_id: cart.stripe_checkout_session_id,
+  });
+});
+
 // POST /v1/carts
 checkout.post('/', async (c) => {
   const body = await c.req.json().catch(() => ({}));
   const customerEmail = body?.customer_email;
 
-  if (!customerEmail || !customerEmail.includes('@')) {
-    throw ApiError.invalidRequest('customer_email is required');
+  if (!customerEmail || !isValidEmail(customerEmail)) {
+    throw ApiError.invalidRequest('A valid customer_email is required');
   }
 
   const { store } = c.get('auth');

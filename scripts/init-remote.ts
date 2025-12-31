@@ -20,9 +20,12 @@ function generateApiKey(prefix: 'pk' | 'sk'): string {
   return `${prefix}_${key}`;
 }
 
+// For remote execution, use wrangler.local.jsonc if you have actual IDs
+const CONFIG_FLAG = process.env.WRANGLER_CONFIG ? `-c ${process.env.WRANGLER_CONFIG}` : '-c wrangler.local.jsonc';
+
 function runSql(sql: string) {
   const escaped = sql.replace(/'/g, "'\\''");
-  execSync(`wrangler d1 execute merchant-db --remote --command='${escaped}'`, {
+  execSync(`wrangler d1 execute DB --remote ${CONFIG_FLAG} --command='${escaped}'`, {
     stdio: 'inherit',
   });
 }

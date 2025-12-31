@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import Stripe from 'stripe';
 import { getDb } from '../db';
-import { ApiError, uuid, now, type Env } from '../types';
+import { ApiError, uuid, now, generateOrderNumber, type Env } from '../types';
 import { dispatchWebhooks } from '../lib/webhooks';
 
 // ============================================================
@@ -50,19 +50,22 @@ webhooks.post('/stripe', async (c) => {
 
   // Handle checkout.session.completed
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as Stripe.Checkout.Session;
-    const cartId = session.metadata?.cart_id;
+    const webhookSession = event.data.object as Stripe.Checkout.Session;
+    const cartId = webhookSession.metadata?.cart_id;
 
     if (cartId) {
       const [cart] = await db.query<any>(`SELECT * FROM carts WHERE id = ?`, [cartId]);
       if (cart) {
         const items = await db.query<any>(`SELECT * FROM cart_items WHERE cart_id = ?`, [cartId]);
 
+        // Retrieve full session from Stripe to get shipping_details
+        // (webhook payload sometimes doesn't include all fields)
+        const session = await stripe.checkout.sessions.retrieve(webhookSession.id);
+
         // Handle discount
         let discountCode = null;
         let discountId = null;
         let discountAmountCents = 0;
-        const shippingCents = session.total_details?.amount_shipping ?? 0;
 
         if (session.metadata?.discount_id) {
           const [discount] = await db.query<any>(
@@ -84,24 +87,93 @@ webhooks.post('/stripe', async (c) => {
         // session.amount_subtotal includes discounts as negative line items, so we calculate from original items
         const subtotalCents = items.reduce((sum, item) => sum + item.unit_price_cents * item.qty, 0);
 
-        // This prevents race conditions that could occur with COUNT(*) based numbering
-        const timestamp = Date.now();
-        const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-        const orderNumber = `ORD-${timestamp}-${randomSuffix}`;
+        // Generate order number (timestamp-based to avoid race conditions)
+        const orderNumber = generateOrderNumber();
 
-        // Create order
+        // Extract customer details from full Stripe session
+        const customerEmail = cart.customer_email;
+        const shippingName = session.shipping_details?.name || session.customer_details?.name || null;
+        const shippingPhone = session.shipping_details?.phone || session.customer_details?.phone || null;
+        const shippingAddress = session.shipping_details?.address || null;
+
+        // Upsert customer (create or update on email match)
+        let customerId: string | null = null;
+        const [existingCustomer] = await db.query<any>(
+          `SELECT id, order_count, total_spent_cents FROM customers WHERE store_id = ? AND email = ?`,
+          [store.id, customerEmail]
+        );
+
+        if (existingCustomer) {
+          // Update existing customer
+          customerId = existingCustomer.id;
+          await db.run(
+            `UPDATE customers SET 
+              name = COALESCE(?, name),
+              phone = COALESCE(?, phone),
+              order_count = order_count + 1,
+              total_spent_cents = total_spent_cents + ?,
+              last_order_at = ?,
+              updated_at = ?
+            WHERE id = ?`,
+            [shippingName, shippingPhone, session.amount_total ?? 0, now(), now(), customerId]
+          );
+        } else {
+          // Create new customer
+          customerId = uuid();
+          await db.run(
+            `INSERT INTO customers (id, store_id, email, name, phone, order_count, total_spent_cents, last_order_at)
+             VALUES (?, ?, ?, ?, ?, 1, ?, ?)`,
+            [customerId, store.id, customerEmail, shippingName, shippingPhone, session.amount_total ?? 0, now()]
+          );
+        }
+
+        // Save shipping address to customer if provided
+        if (shippingAddress && customerId) {
+          const [existingAddress] = await db.query<any>(
+            `SELECT id FROM customer_addresses WHERE customer_id = ? AND line1 = ? AND postal_code = ?`,
+            [customerId, shippingAddress.line1, shippingAddress.postal_code]
+          );
+
+          if (!existingAddress) {
+            // Check if customer has any addresses
+            const [addressCount] = await db.query<any>(
+              `SELECT COUNT(*) as count FROM customer_addresses WHERE customer_id = ?`,
+              [customerId]
+            );
+            const isDefault = addressCount.count === 0 ? 1 : 0;
+
+            await db.run(
+              `INSERT INTO customer_addresses (id, customer_id, is_default, name, line1, line2, city, state, postal_code, country, phone)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              [
+                uuid(), customerId, isDefault, shippingName,
+                shippingAddress.line1, shippingAddress.line2 || null,
+                shippingAddress.city, shippingAddress.state,
+                shippingAddress.postal_code, shippingAddress.country,
+                shippingPhone
+              ]
+            );
+          }
+        }
+
+        // Generate order number (timestamp-based to avoid race conditions)
+        const orderNumber = generateOrderNumber();
+
+        // Create order (now with customer link, shipping details, and discount)
         const orderId = uuid();
         await db.run(
-          `INSERT INTO orders (id, store_id, number, status, customer_email, ship_to,
+          `INSERT INTO orders (id, store_id, customer_id, number, status, customer_email, 
+           shipping_name, shipping_phone, ship_to,
            subtotal_cents, tax_cents, shipping_cents, total_cents, currency,
            discount_code, discount_id, discount_amount_cents,
            stripe_checkout_session_id, stripe_payment_intent_id)
-           VALUES (?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, 'paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
-            orderId, store.id, orderNumber, cart.customer_email,
-            session.shipping_details?.address ? JSON.stringify(session.shipping_details.address) : null,
+            orderId, store.id, customerId, orderNumber, customerEmail,
+            shippingName, shippingPhone,
+            shippingAddress ? JSON.stringify(shippingAddress) : null,
             subtotalCents, session.total_details?.amount_tax ?? 0,
-            shippingCents, session.amount_total ?? 0, cart.currency,
+            session.total_details?.amount_shipping ?? 0, session.amount_total ?? 0, cart.currency,
             discountCode, discountId, discountAmountCents,
             session.id, session.payment_intent
           ]
@@ -152,8 +224,13 @@ webhooks.post('/stripe', async (c) => {
             id: orderId,
             number: orderNumber,
             status: 'paid',
-            customer_email: cart.customer_email,
-            ship_to: session.shipping_details?.address || null,
+            customer_email: customerEmail,
+            customer_id: customerId,
+            shipping: {
+              name: shippingName,
+              phone: shippingPhone,
+              address: shippingAddress,
+            },
             amounts: {
               subtotal_cents: session.amount_subtotal ?? 0,
               tax_cents: session.total_details?.amount_tax ?? 0,

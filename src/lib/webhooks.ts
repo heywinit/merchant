@@ -205,6 +205,18 @@ async function deliverWebhook(
 /**
  * Check inventory levels and dispatch low stock webhooks
  */
+/**
+ * Retry a single webhook delivery (called from API)
+ */
+export async function retryDelivery(
+  env: Env,
+  webhook: { id: string; url: string; secret: string },
+  delivery: { id: string; payload: string }
+): Promise<void> {
+  const payload = JSON.parse(delivery.payload);
+  await deliverWebhook(env, webhook.id, webhook.url, webhook.secret, delivery.id, payload);
+}
+
 export async function checkLowInventory(
   env: Env,
   ctx: ExecutionContext,

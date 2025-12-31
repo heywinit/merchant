@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 admin/node_modules/
+example/node_modules/
 
 # Marketing site (separate repo)
 site/
@@ -16,6 +17,7 @@ admin/dist/
 .dev.vars
 wrangler.local.jsonc
 admin/wrangler.local.jsonc
+example/src/api.js
 
 # IDE
 .idea/

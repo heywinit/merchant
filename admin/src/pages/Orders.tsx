@@ -12,7 +12,7 @@ import {
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, RefreshCw, Truck, ExternalLink } from 'lucide-react';
 import { api, Order } from '../lib/api';
 import { StatusBadge } from '../components/StatusBadge';
-import { SlideOver } from '../components/SlideOver';
+import { Modal } from '../components/Modal';
 import clsx from 'clsx';
 
 const columnHelper = createColumnHelper<Order>();
@@ -49,6 +49,7 @@ export function Orders() {
     mutationFn: (id: string) => api.refundOrder(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setSelectedOrder(null);
     },
   });
 
@@ -56,12 +57,21 @@ export function Orders() {
     columnHelper.accessor('number', {
       header: 'Order',
       cell: (info) => (
-        <span className="font-mono">{info.getValue() || info.row.original.id.slice(0, 8)}</span>
+        <span className="font-mono text-sm">{info.getValue() || info.row.original.id.slice(0, 8)}</span>
+      ),
+    }),
+    columnHelper.accessor((row) => row.shipping?.name || '', {
+      id: 'name',
+      header: 'Name',
+      cell: (info) => (
+        <span className="font-mono text-sm">{info.getValue() || '-'}</span>
       ),
     }),
     columnHelper.accessor('customer_email', {
-      header: 'Customer',
-      cell: (info) => <span className="font-mono">{info.getValue() || '-'}</span>,
+      header: 'Email',
+      cell: (info) => (
+        <span className="font-mono text-sm">{info.getValue() || '-'}</span>
+      ),
     }),
     columnHelper.accessor('status', {
       header: 'Status',
@@ -69,16 +79,16 @@ export function Orders() {
     }),
     columnHelper.accessor((row) => row.amounts.total_cents, {
       id: 'total',
-      header: () => <span className="block text-right">Total</span>,
+      header: 'Total',
       cell: (info) => (
-        <span className="block text-right font-mono">
-          ${(info.getValue() / 100).toFixed(2)}
-        </span>
+        <span className="font-mono text-sm">${(info.getValue() / 100).toFixed(2)}</span>
       ),
     }),
     columnHelper.accessor('created_at', {
       header: 'Date',
-      cell: (info) => new Date(info.getValue()).toLocaleDateString(),
+      cell: (info) => (
+        <span className="font-mono text-sm">{new Date(info.getValue()).toLocaleDateString()}</span>
+      ),
     }),
   ], []);
 
@@ -112,13 +122,13 @@ export function Orders() {
 
       {/* Table card */}
       <div
-        className="rounded overflow-hidden"
-        style={{ background: 'var(--bg-content)', border: '1px solid var(--border)' }}
+        className="rounded-lg overflow-hidden"
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
       >
         {/* Filters */}
         <div
           className="flex items-center border-b"
-          style={{ background: 'var(--bg-subtle)', borderColor: 'var(--border)' }}
+          style={{ borderColor: 'var(--border)' }}
         >
           {/* Search */}
           <div className="flex-1 flex items-center gap-2 px-4 py-3" style={{ color: 'var(--text-muted)' }}>
@@ -127,8 +137,8 @@ export function Orders() {
               type="text"
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              placeholder="Search orders..."
-              className="bg-transparent border-0 text-sm w-full focus:outline-none font-mono"
+              placeholder="Search..."
+              className="bg-transparent border-0 font-mono text-sm w-full focus:outline-none"
               style={{ color: 'var(--text)' }}
             />
           </div>
@@ -137,7 +147,7 @@ export function Orders() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-full px-4 py-3 text-sm bg-transparent border-0 border-l focus:outline-none cursor-pointer appearance-none"
+            className="h-full px-4 py-3 font-mono text-sm bg-transparent border-0 border-l focus:outline-none cursor-pointer"
             style={{
               borderColor: 'var(--border)',
               color: statusFilter ? 'var(--text)' : 'var(--text-muted)',
@@ -160,19 +170,19 @@ export function Orders() {
             No orders yet
           </div>
         ) : (
-          <table className="w-full font-mono text-[13px]">
-            <thead style={{ background: 'var(--bg-subtle)' }}>
+          <table className="w-full">
+            <thead>
               {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
+                <tr key={headerGroup.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
                       onClick={header.column.getToggleSortingHandler()}
                       className={clsx(
-                        'px-4 py-2.5 text-left text-xs font-medium font-sans uppercase tracking-wide',
+                        'px-4 py-3 text-left text-xs font-medium uppercase tracking-wide',
                         header.column.getCanSort() && 'cursor-pointer select-none hover:bg-[var(--bg-hover)]'
                       )}
-                      style={{ color: 'var(--text-secondary)' }}
+                      style={{ color: 'var(--text-muted)' }}
                     >
                       <div className="flex items-center gap-1">
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -213,144 +223,156 @@ export function Orders() {
         )}
       </div>
 
-      {/* Order Detail Slide-over */}
-      <SlideOver
+      {/* Order Detail Modal */}
+      <Modal
         open={!!selectedOrder}
         onClose={() => setSelectedOrder(null)}
         title={selectedOrder ? `Order ${selectedOrder.number || selectedOrder.id.slice(0, 8)}` : 'Order'}
-        width="lg"
+        size="lg"
       >
         {selectedOrder && (
-          <div className="space-y-6">
-            {/* Status & Actions */}
-            <div className="flex items-center justify-between">
-              <StatusBadge status={selectedOrder.status} />
-              {selectedOrder.status === 'paid' && selectedOrder.stripe?.payment_intent_id && selectedOrder.stripe && (
-                <button
-                  onClick={() => {
-                    if (confirm('Are you sure you want to refund this order?')) {
-                      refundMutation.mutate(selectedOrder.id);
-                    }
-                  }}
-                  disabled={refundMutation.isPending}
-                  className="text-sm text-red-500 hover:text-red-600 disabled:opacity-50"
-                >
-                  {refundMutation.isPending ? 'Refunding...' : 'Refund'}
-                </button>
-              )}
-            </div>
+          <div className="space-y-5">
+            {/* Status Badge */}
+            <StatusBadge status={selectedOrder.status} />
 
-            {/* Customer */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Customer
-              </h4>
-              <p className="font-mono">{selectedOrder.customer_email}</p>
-            </div>
+            {/* Two column layout */}
+            <div className="grid grid-cols-2 gap-5">
+              {/* Left column */}
+              <div className="space-y-4">
+                {/* Customer */}
+                <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                  <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    Customer
+                  </h4>
+                  {selectedOrder.shipping?.name && (
+                    <p className="font-mono text-sm font-medium">{selectedOrder.shipping.name}</p>
+                  )}
+                  <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    {selectedOrder.customer_email}
+                  </p>
+                  {selectedOrder.shipping?.phone && (
+                    <p className="font-mono text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      {selectedOrder.shipping.phone}
+                    </p>
+                  )}
+                </div>
 
-            {/* Items */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Items
-              </h4>
-              <div className="space-y-2">
-                {selectedOrder.items.map((item, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center justify-between p-3 rounded"
-                    style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}
-                  >
-                    <div>
-                      <p className="font-medium">{item.title}</p>
-                      <p className="text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>
-                        {item.sku} × {item.qty}
+                {/* Shipping Address */}
+                {selectedOrder.shipping?.address && (
+                  <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                    <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                      Ship To
+                    </h4>
+                    <div className="font-mono text-sm">
+                      {selectedOrder.shipping.name && (
+                        <p className="font-medium">{selectedOrder.shipping.name}</p>
+                      )}
+                      {selectedOrder.shipping.address.line1 && <p>{selectedOrder.shipping.address.line1}</p>}
+                      {selectedOrder.shipping.address.line2 && <p>{selectedOrder.shipping.address.line2}</p>}
+                      <p>
+                        {[selectedOrder.shipping.address.city, selectedOrder.shipping.address.state, selectedOrder.shipping.address.postal_code]
+                          .filter(Boolean)
+                          .join(', ')}
                       </p>
+                      {selectedOrder.shipping.address.country && <p>{selectedOrder.shipping.address.country}</p>}
                     </div>
-                    <p className="font-mono">{formatCurrency(item.unit_price_cents * item.qty)}</p>
                   </div>
-                ))}
+                )}
+
+                {/* Stripe Info */}
+                {selectedOrder.stripe?.payment_intent_id && (
+                  <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                    <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                      Stripe
+                    </h4>
+                    <p className="text-xs font-mono break-all" style={{ color: 'var(--text-muted)' }}>
+                      PI: {selectedOrder.stripe.payment_intent_id}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Right column */}
+              <div className="space-y-4">
+                {/* Items */}
+                <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                  <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    Items
+                  </h4>
+                  <div className="space-y-2">
+                    {selectedOrder.items.map((item, i) => (
+                      <div key={i} className="flex items-center justify-between text-sm">
+                        <div>
+                          <p className="font-mono">{item.title}</p>
+                          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                            {item.sku} × {item.qty}
+                          </p>
+                        </div>
+                        <p className="font-mono">{formatCurrency(item.unit_price_cents * item.qty)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Summary */}
+                <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+                  <div className="space-y-1 text-sm font-mono">
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-secondary)' }}>Subtotal</span>
+                      <span>{formatCurrency(selectedOrder.amounts.subtotal_cents)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-secondary)' }}>Tax</span>
+                      <span>{formatCurrency(selectedOrder.amounts.tax_cents)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span style={{ color: 'var(--text-secondary)' }}>Shipping</span>
+                      <span>{formatCurrency(selectedOrder.amounts.shipping_cents)}</span>
+                    </div>
+                    <div className="flex justify-between pt-2 mt-2 border-t font-semibold" style={{ borderColor: 'var(--border)' }}>
+                      <span>Total</span>
+                      <span>{formatCurrency(selectedOrder.amounts.total_cents)}</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            {/* Amounts */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Summary
-              </h4>
-              <div className="space-y-1 font-mono text-sm">
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-secondary)' }}>Subtotal</span>
-                  <span>{formatCurrency(selectedOrder.amounts.subtotal_cents)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-secondary)' }}>Tax</span>
-                  <span>{formatCurrency(selectedOrder.amounts.tax_cents)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span style={{ color: 'var(--text-secondary)' }}>Shipping</span>
-                  <span>{formatCurrency(selectedOrder.amounts.shipping_cents)}</span>
-                </div>
-                <div className="flex justify-between pt-2 border-t font-semibold" style={{ borderColor: 'var(--border)' }}>
-                  <span>Total</span>
-                  <span>{formatCurrency(selectedOrder.amounts.total_cents)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Shipping Address */}
-            {selectedOrder.ship_to && (
+            {/* Status & Tracking */}
+            <div className="grid grid-cols-2 gap-5 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              {/* Status Update */}
               <div>
                 <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  Shipping Address
+                  Status
                 </h4>
-                <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {selectedOrder.ship_to.line1 && <p>{selectedOrder.ship_to.line1}</p>}
-                  {selectedOrder.ship_to.line2 && <p>{selectedOrder.ship_to.line2}</p>}
-                  <p>
-                    {[selectedOrder.ship_to.city, selectedOrder.ship_to.state, selectedOrder.ship_to.postal_code]
-                      .filter(Boolean)
-                      .join(', ')}
-                  </p>
-                  {selectedOrder.ship_to.country && <p>{selectedOrder.ship_to.country}</p>}
-                </div>
+                <select
+                  value={selectedOrder.status}
+                  onChange={(e) => {
+                    updateMutation.mutate({
+                      id: selectedOrder.id,
+                      data: { status: e.target.value },
+                    });
+                  }}
+                  disabled={updateMutation.isPending}
+                  className="w-full px-3 py-2 font-mono text-sm rounded-lg focus:outline-none focus:ring-2"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  {ORDER_STATUSES.map((s) => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
               </div>
-            )}
 
-            {/* Status Update */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Update Status
-              </h4>
-              <select
-                value={selectedOrder.status}
-                onChange={(e) => {
-                  updateMutation.mutate({
-                    id: selectedOrder.id,
-                    data: { status: e.target.value },
-                  });
-                }}
-                disabled={updateMutation.isPending}
-                className="w-full px-3 py-2 text-sm rounded focus:outline-none focus:ring-2"
-                style={{
-                  background: 'var(--bg-content)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  '--tw-ring-color': 'var(--accent)',
-                } as React.CSSProperties}
-              >
-                {ORDER_STATUSES.map((s) => (
-                  <option key={s} value={s}>{s}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Tracking */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
-                <Truck size={14} />
-                Tracking
-              </h4>
-              <div className="space-y-2">
+              {/* Tracking */}
+              <div>
+                <h4 className="text-xs font-medium uppercase tracking-wide mb-2 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
+                  <Truck size={14} />
+                  Tracking
+                </h4>
                 <input
                   type="text"
                   placeholder="Tracking number"
@@ -363,75 +385,50 @@ export function Orders() {
                       });
                     }
                   }}
-                  className="w-full px-3 py-2 text-sm font-mono rounded focus:outline-none focus:ring-2"
+                  className="w-full px-3 py-2 font-mono text-sm rounded-lg focus:outline-none focus:ring-2"
                   style={{
-                    background: 'var(--bg-content)',
+                    background: 'var(--bg-card)',
                     border: '1px solid var(--border)',
                     color: 'var(--text)',
-                    '--tw-ring-color': 'var(--accent)',
-                  } as React.CSSProperties}
-                />
-                <input
-                  type="url"
-                  placeholder="Tracking URL"
-                  defaultValue={selectedOrder.tracking?.url || ''}
-                  onBlur={(e) => {
-                    if (e.target.value !== (selectedOrder.tracking?.url || '')) {
-                      updateMutation.mutate({
-                        id: selectedOrder.id,
-                        data: { tracking_url: e.target.value },
-                      });
-                    }
                   }}
-                  className="w-full px-3 py-2 text-sm font-mono rounded focus:outline-none focus:ring-2"
-                  style={{
-                    background: 'var(--bg-content)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    '--tw-ring-color': 'var(--accent)',
-                  } as React.CSSProperties}
                 />
                 {selectedOrder.tracking?.url && (
                   <a
                     href={selectedOrder.tracking.url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 text-sm hover:underline"
+                    className="inline-flex items-center gap-1 text-sm mt-2 hover:underline"
                     style={{ color: 'var(--accent)' }}
                   >
                     <ExternalLink size={14} />
                     Track package
                   </a>
                 )}
-                {selectedOrder.tracking?.shipped_at && (
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    Shipped {new Date(selectedOrder.tracking.shipped_at).toLocaleString()}
-                  </p>
-                )}
               </div>
             </div>
 
-            {/* Stripe Info */}
-            {selectedOrder.stripe?.payment_intent_id && (
-              <div>
-                <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                  Stripe
-                </h4>
-                <div className="text-sm font-mono" style={{ color: 'var(--text-muted)' }}>
-                  <p>Payment: {selectedOrder.stripe.payment_intent_id}</p>
-                  <p>Session: {selectedOrder.stripe.checkout_session_id}</p>
-                </div>
-              </div>
-            )}
-
-            {/* Timestamps */}
-            <div className="pt-4 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-              <p>Created {new Date(selectedOrder.created_at).toLocaleString()}</p>
+            {/* Footer: Timestamp + Refund */}
+            <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                Created {new Date(selectedOrder.created_at).toLocaleString()}
+              </p>
+              {selectedOrder.status === 'paid' && selectedOrder.stripe?.payment_intent_id && (
+                <button
+                  onClick={() => {
+                    if (confirm('Are you sure you want to refund this order?')) {
+                      refundMutation.mutate(selectedOrder.id);
+                    }
+                  }}
+                  disabled={refundMutation.isPending}
+                  className="text-sm font-medium text-red-500 hover:text-red-600 disabled:opacity-50"
+                >
+                  {refundMutation.isPending ? 'Refunding...' : 'Refund Order'}
+                </button>
+              )}
             </div>
           </div>
         )}
-      </SlideOver>
+      </Modal>
     </div>
   );
 }
-

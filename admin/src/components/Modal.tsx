@@ -11,12 +11,12 @@ type ModalProps = {
 };
 
 const sizes = {
-  sm: 'max-w-sm',
-  md: 'max-w-md',
-  lg: 'max-w-lg',
+  sm: 'max-w-md',
+  md: 'max-w-lg',
+  lg: 'max-w-2xl',
 };
 
-export function Modal({ open, onClose, title, children, size = 'sm' }: ModalProps) {
+export function Modal({ open, onClose, title, children, size = 'md' }: ModalProps) {
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -34,29 +34,30 @@ export function Modal({ open, onClose, title, children, size = 'sm' }: ModalProp
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto">
+      {/* Backdrop - solid color */}
       <div
-        className="absolute inset-0 bg-black/40"
+        className="fixed inset-0"
+        style={{ background: 'rgba(0, 0, 0, 0.75)' }}
         onClick={onClose}
       />
 
       {/* Modal */}
       <div
-        className={clsx(
-          'relative w-full p-6 rounded shadow-lg',
-          sizes[size]
-        )}
-        style={{ background: 'var(--bg-content)', border: '1px solid var(--border)' }}
+        className={clsx('relative w-full shadow-2xl my-8 mx-4', sizes[size])}
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base font-semibold" style={{ color: 'var(--text)' }}>
+        <div
+          className="sticky top-0 z-10 flex items-center justify-between px-6 py-4"
+          style={{ background: 'var(--bg-card)', borderBottom: '1px solid var(--border)' }}
+        >
+          <h3 className="text-lg font-semibold" style={{ color: 'var(--text)' }}>
             {title}
           </h3>
           <button
             onClick={onClose}
-            className="p-1 rounded hover:bg-[var(--bg-hover)] transition-colors"
+            className="p-1.5 hover:bg-[var(--bg-hover)] transition-colors"
             style={{ color: 'var(--text-muted)' }}
           >
             <X size={18} />
@@ -64,9 +65,10 @@ export function Modal({ open, onClose, title, children, size = 'sm' }: ModalProp
         </div>
 
         {/* Content */}
-        {children}
+        <div className="px-6 py-5 max-h-[80vh] overflow-y-auto">
+          {children}
+        </div>
       </div>
     </div>
   );
 }
-

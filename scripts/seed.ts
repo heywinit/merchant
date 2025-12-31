@@ -50,9 +50,10 @@ async function seed() {
 
   // Products
   const products = [
-    { title: 'Classic Tee', description: 'Premium cotton t-shirt' },
-    { title: 'Hoodie', description: 'Cozy pullover hoodie' },
-    { title: 'Cap', description: 'Embroidered baseball cap' },
+    { title: 'Classic Tee', description: 'Premium cotton t-shirt. Soft, breathable, and built to last.' },
+    { title: 'Hoodie', description: 'Cozy pullover hoodie. Perfect for coding sessions.' },
+    { title: 'Cap', description: 'Embroidered baseball cap. One size fits most.' },
+    { title: 'Sticker Pack', description: 'Set of 5 die-cut vinyl stickers. Waterproof and durable.' },
   ];
 
   const variants: Record<string, any[]> = {
@@ -73,6 +74,9 @@ async function seed() {
     'Cap': [
       { sku: 'CAP-BLK', title: 'Black', price_cents: 2499, weight_g: 100, stock: 100 },
       { sku: 'CAP-NVY', title: 'Navy', price_cents: 2499, weight_g: 100, stock: 80 },
+    ],
+    'Sticker Pack': [
+      { sku: 'STICKER-5PK', title: '5 Pack', price_cents: 999, weight_g: 20, stock: 200 },
     ],
   };
 

@@ -57,6 +57,9 @@ All endpoints require `Authorization: Bearer <key>` header.
 # List products (with pagination)
 GET /v1/products?limit=20&cursor=...&status=active
 
+# Get single product
+GET /v1/products/{id}
+
 # Create product
 POST /v1/products
 {"title": "T-Shirt", "description": "Premium cotton tee"}
@@ -65,16 +68,26 @@ POST /v1/products
 PATCH /v1/products/{id}
 {"title": "Updated Title", "status": "draft"}
 
+# Delete product (fails if variants have been ordered)
+DELETE /v1/products/{id}
+
 # Add variant
 POST /v1/products/{id}/variants
 {"sku": "TEE-BLK-M", "title": "Black / M", "price_cents": 2999}
+
+# Update variant
+PATCH /v1/products/{id}/variants/{variantId}
+{"price_cents": 3499}
+
+# Delete variant (fails if ordered)
+DELETE /v1/products/{id}/variants/{variantId}
 ```
 
 ### Inventory (admin)
 
 ```bash
-# List all inventory
-GET /v1/inventory
+# List inventory (with pagination)
+GET /v1/inventory?limit=100&cursor=...&low_stock=true
 
 # Get single SKU
 GET /v1/inventory?sku=TEE-BLK-M
@@ -85,6 +98,11 @@ POST /v1/inventory/{sku}/adjust
 # reason: restock | correction | damaged | return
 ```
 
+**Query params:**
+- `limit` — Max items per page (default 100, max 500)
+- `cursor` — Pagination cursor (SKU of last item)
+- `low_stock` — Filter items with ≤10 available
+
 ### Checkout (public)
 
 ```bash
@@ -92,7 +110,10 @@ POST /v1/inventory/{sku}/adjust
 POST /v1/carts
 {"customer_email": "buyer@example.com"}
 
-# Add items to cart
+# Get cart
+GET /v1/carts/{id}
+
+# Add items to cart (replaces existing items)
 POST /v1/carts/{id}/items
 {"items": [{"sku": "TEE-BLK-M", "qty": 2}]}
 
@@ -112,6 +133,32 @@ POST /v1/carts/{id}/checkout
 - `shipping_options` — Custom shipping rates (optional, has sensible defaults)
 
 Automatic tax calculation is enabled via Stripe Tax.
+
+### Customers (admin)
+
+```bash
+# List customers (with pagination and search)
+GET /v1/customers?limit=20&cursor=...&search=john@example.com
+
+# Get customer with addresses
+GET /v1/customers/{id}
+
+# Get customer's order history
+GET /v1/customers/{id}/orders
+
+# Update customer
+PATCH /v1/customers/{id}
+{"name": "John Doe", "phone": "+1234567890"}
+
+# Add address
+POST /v1/customers/{id}/addresses
+{"line1": "123 Main St", "city": "NYC", "postal_code": "10001"}
+
+# Delete address
+DELETE /v1/customers/{id}/addresses/{addressId}
+```
+
+Customers are automatically created from Stripe checkout sessions (guest checkout by email).
 
 ### Orders (admin)
 
@@ -217,6 +264,16 @@ cd admin && npm install && npm run dev
 
 Connect with your API URL and admin key (`sk_...`).
 
+## Example Store
+
+A complete vanilla JS storefront demonstrating the full checkout flow:
+
+```bash
+cd example && npm run dev
+```
+
+Update `example/src/config.js` with your public key (`pk_...`), then open http://localhost:3000
+
 Features:
 - **Orders** — Search, filter by status, update tracking, one-click refunds
 - **Inventory** — View stock levels, quick adjustments (+10, +50, etc.)
@@ -239,6 +296,7 @@ src/
     ├── checkout.ts   # Carts & Stripe checkout
     ├── orders.ts     # Order management
     ├── inventory.ts  # Stock levels
+    ├── customers.ts  # Customer management
     ├── images.ts     # R2 image upload
     ├── setup.ts      # Store configuration
     └── webhooks.ts   # Stripe webhooks

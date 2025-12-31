@@ -7,6 +7,7 @@ import { type Env } from './types';
 export type Database = {
   query: <T = any>(sql: string, params?: unknown[]) => Promise<T[]>;
   run: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
+  runWithChanges: (sql: string, params?: unknown[]) => Promise<{ changes: number }>;
 };
 
 export function getDb(env: Env): Database {
@@ -19,6 +20,11 @@ export function getDb(env: Env): Database {
     },
 
     async run(sql: string, params: unknown[] = []): Promise<{ changes: number }> {
+      const result = await db.prepare(sql).bind(...params).run();
+      return { changes: result.meta.changes ?? 0 };
+    },
+
+    async runWithChanges(sql: string, params: unknown[] = []): Promise<{ changes: number }> {
       const result = await db.prepare(sql).bind(...params).run();
       return { changes: result.meta.changes ?? 0 };
     },

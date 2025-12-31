@@ -1,8 +1,8 @@
 import { ReactNode, useState } from 'react';
-import { ClipboardList, Package, Boxes, Moon, Sun, LogOut, PanelLeftClose, PanelLeft, Webhook } from 'lucide-react';
+import { ClipboardList, Package, Boxes, Moon, Sun, LogOut, PanelLeftClose, PanelLeft, Webhook, Users } from 'lucide-react';
 import clsx from 'clsx';
 
-type Page = 'orders' | 'inventory' | 'products' | 'webhooks';
+type Page = 'orders' | 'customers' | 'inventory' | 'products' | 'webhooks';
 
 type LayoutProps = {
   children: ReactNode;
@@ -15,6 +15,7 @@ type LayoutProps = {
 
 const navItems: { id: Page; label: string; icon: typeof ClipboardList }[] = [
   { id: 'orders', label: 'Orders', icon: ClipboardList },
+  { id: 'customers', label: 'Customers', icon: Users },
   { id: 'inventory', label: 'Inventory', icon: Boxes },
   { id: 'products', label: 'Products', icon: Package },
   { id: 'webhooks', label: 'Webhooks', icon: Webhook },

@@ -36,13 +36,18 @@ export type Order = {
   number?: string;
   status: 'pending' | 'paid' | 'processing' | 'shipped' | 'delivered' | 'refunded' | 'canceled';
   customer_email: string;
-  ship_to?: {
-    line1?: string;
-    line2?: string;
-    city?: string;
-    state?: string;
-    postal_code?: string;
-    country?: string;
+  customer_id?: string | null;
+  shipping?: {
+    name: string | null;
+    phone: string | null;
+    address: {
+      line1?: string;
+      line2?: string;
+      city?: string;
+      state?: string;
+      postal_code?: string;
+      country?: string;
+    } | null;
   } | null;
   amounts: {
     subtotal_cents: number;
@@ -67,6 +72,38 @@ export type Order = {
     unit_price_cents: number;
   }>;
   created_at: string;
+};
+
+export type Customer = {
+  id: string;
+  email: string;
+  name: string | null;
+  phone: string | null;
+  has_account: boolean;
+  accepts_marketing: boolean;
+  stats: {
+    order_count: number;
+    total_spent_cents: number;
+    last_order_at: string | null;
+  };
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CustomerAddress = {
+  id: string;
+  label: string | null;
+  is_default: boolean;
+  name: string | null;
+  company: string | null;
+  line1: string;
+  line2: string | null;
+  city: string;
+  state: string | null;
+  postal_code: string;
+  country: string;
+  phone: string | null;
 };
 
 export type Product = {
@@ -265,6 +302,35 @@ export const api = {
   async rotateWebhookSecret(id: string) {
     return request<{ secret: string }>(`/v1/webhooks/${id}/rotate-secret`, {
       method: 'POST',
+    });
+  },
+
+  // Customers
+  async getCustomers(params?: { limit?: number; cursor?: string; search?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.cursor) searchParams.set('cursor', params.cursor);
+    if (params?.search) searchParams.set('search', params.search);
+    const query = searchParams.toString();
+    return request<PaginatedResponse<Customer>>(`/v1/customers${query ? `?${query}` : ''}`);
+  },
+
+  async getCustomer(id: string) {
+    return request<Customer & { addresses: CustomerAddress[] }>(`/v1/customers/${id}`);
+  },
+
+  async getCustomerOrders(id: string, params?: { limit?: number; cursor?: string }) {
+    const searchParams = new URLSearchParams();
+    if (params?.limit) searchParams.set('limit', String(params.limit));
+    if (params?.cursor) searchParams.set('cursor', params.cursor);
+    const query = searchParams.toString();
+    return request<PaginatedResponse<Order>>(`/v1/customers/${id}/orders${query ? `?${query}` : ''}`);
+  },
+
+  async updateCustomer(id: string, data: { name?: string; phone?: string; accepts_marketing?: boolean; metadata?: Record<string, unknown> }) {
+    return request<Customer>(`/v1/customers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     });
   },
 

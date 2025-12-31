@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cart — Merchant Store</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Space Grotesk', sans-serif; }
+  </style>
+</head>
+<body class="bg-black text-white min-h-screen">
+  
+  <!-- Header -->
+  <header class="border-b border-zinc-800">
+    <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+      <a href="/" class="text-xl font-bold tracking-tight">MERCHANT</a>
+      <nav class="flex items-center gap-6">
+        <a href="/" class="text-sm text-zinc-400 hover:text-white transition-colors">Shop</a>
+        <a href="/cart.html" class="relative p-2 bg-zinc-900 rounded-lg">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+          </svg>
+          <span id="cart-count" class="absolute -top-1 -right-1 bg-white text-black text-xs font-bold w-5 h-5 rounded-full items-center justify-center hidden">0</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Cart -->
+  <main class="max-w-2xl mx-auto px-6 py-12">
+    
+    <h1 class="text-3xl font-bold mb-8">Your Cart</h1>
+
+    <!-- Empty State -->
+    <div id="empty-cart" class="text-center py-20 hidden">
+      <div class="inline-flex items-center justify-center w-16 h-16 bg-zinc-900 rounded-full mb-4">
+        <svg class="w-8 h-8 text-zinc-600" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/>
+        </svg>
+      </div>
+      <h2 class="text-xl font-medium mb-2">Cart is empty</h2>
+      <p class="text-zinc-500 mb-6">Add some items to get started</p>
+      <a href="/" class="inline-block bg-white text-black font-medium px-6 py-3 rounded-lg hover:bg-zinc-200 transition-colors">
+        Continue Shopping
+      </a>
+    </div>
+
+    <!-- Cart Content -->
+    <div id="cart-content" class="hidden">
+      
+      <!-- Cart Items -->
+      <div id="cart-items" class="mb-8">
+        <!-- Items injected by JS -->
+      </div>
+
+      <!-- Summary -->
+      <div class="border-t border-zinc-800 pt-6">
+        <div class="flex justify-between items-center mb-6">
+          <span class="text-zinc-400">Subtotal</span>
+          <span id="subtotal" class="text-xl font-bold">$0.00</span>
+        </div>
+        <p class="text-zinc-500 text-sm mb-6">Shipping and taxes calculated at checkout</p>
+
+        <!-- Email -->
+        <div class="mb-4">
+          <label for="email" class="block text-sm text-zinc-400 mb-2">Email address</label>
+          <input 
+            type="email" 
+            id="email" 
+            placeholder="you@example.com"
+            class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-700"
+          >
+        </div>
+
+        <!-- Error -->
+        <p id="checkout-error" class="text-red-400 text-sm mb-4 hidden"></p>
+
+        <!-- Checkout Button -->
+        <button 
+          id="checkout-btn"
+          class="w-full bg-white text-black font-semibold py-4 rounded-lg hover:bg-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Checkout
+        </button>
+
+        <p class="text-center text-zinc-600 text-xs mt-4">
+          Secure checkout powered by Stripe
+        </p>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-zinc-800 mt-20">
+    <div class="max-w-6xl mx-auto px-6 py-8 flex items-center justify-between text-sm text-zinc-500">
+      <p>Built with <a href="https://github.com/ygwyg/merchant" class="text-white hover:underline">Merchant</a></p>
+      <p>Vanilla JS • No Framework</p>
+    </div>
+  </footer>
+
+  <script type="module" src="/src/cart-page.js"></script>
+</body>
+</html>
+

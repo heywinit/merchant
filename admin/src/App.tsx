@@ -4,11 +4,12 @@ import { api } from './lib/api';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
 import { Orders } from './pages/Orders';
+import { Customers } from './pages/Customers';
 import { Inventory } from './pages/Inventory';
 import { Products } from './pages/Products';
 import { Webhooks } from './pages/Webhooks';
 
-type Page = 'orders' | 'inventory' | 'products' | 'webhooks';
+type Page = 'orders' | 'customers' | 'inventory' | 'products' | 'webhooks';
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -36,7 +37,7 @@ export default function App() {
     // Handle hash routing
     const handleHashChange = () => {
       const hash = window.location.hash.slice(1) as Page;
-      if (['orders', 'inventory', 'products', 'webhooks'].includes(hash)) {
+      if (['orders', 'customers', 'inventory', 'products', 'webhooks'].includes(hash)) {
         setCurrentPage(hash);
       }
     };
@@ -91,6 +92,7 @@ export default function App() {
       onThemeToggle={handleThemeToggle}
     >
       {currentPage === 'orders' && <Orders />}
+      {currentPage === 'customers' && <Customers />}
       {currentPage === 'inventory' && <Inventory />}
       {currentPage === 'products' && <Products />}
       {currentPage === 'webhooks' && <Webhooks />}

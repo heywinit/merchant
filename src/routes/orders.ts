@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import Stripe from 'stripe';
 import { getDb } from '../db';
 import { authMiddleware, adminOnly } from '../middleware/auth';
-import { ApiError, uuid, now, type Env, type AuthContext } from '../types';
+import { ApiError, uuid, now, generateOrderNumber, type Env, type AuthContext } from '../types';
 import { validateDiscount, calculateDiscount, type Discount } from './discounts';
 import { dispatchWebhooks, type WebhookEventType } from '../lib/webhooks';
 
@@ -56,15 +56,27 @@ ordersRoutes.get('/', async (c) => {
   const hasMore = orderList.length > limit;
   if (hasMore) orderList.pop();
 
-  const items = await Promise.all(
-    orderList.map(async (order) => {
-      const orderItems = await db.query<any>(
-        `SELECT * FROM order_items WHERE order_id = ?`,
-        [order.id]
-      );
-      return formatOrder(order, orderItems);
-    })
-  );
+  // Batch fetch all order items (avoids N+1 query)
+  const orderIds = orderList.map((o) => o.id);
+  let itemsByOrder: Record<string, any[]> = {};
+  
+  if (orderIds.length > 0) {
+    const placeholders = orderIds.map(() => '?').join(',');
+    const allItems = await db.query<any>(
+      `SELECT * FROM order_items WHERE order_id IN (${placeholders})`,
+      orderIds
+    );
+    
+    // Group items by order_id
+    for (const item of allItems) {
+      if (!itemsByOrder[item.order_id]) {
+        itemsByOrder[item.order_id] = [];
+      }
+      itemsByOrder[item.order_id].push(item);
+    }
+  }
+
+  const items = orderList.map((order) => formatOrder(order, itemsByOrder[order.id] || []));
 
   const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].created_at : null;
 
@@ -296,19 +308,43 @@ ordersRoutes.post('/test', async (c) => {
 
   const totalCents = subtotal - discountAmountCents;
 
-  // This prevents race conditions that could occur with COUNT(*) based numbering
+  // Upsert customer (same logic as real checkout)
   const timestamp = now();
-  const timestampMs = Date.now();
-  const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-  const orderNumber = `ORD-${timestampMs}-${randomSuffix}`;
+  let customerId: string | null = null;
+  const [existingCustomer] = await db.query<any>(
+    `SELECT id, order_count, total_spent_cents FROM customers WHERE store_id = ? AND email = ?`,
+    [store.id, customer_email]
+  );
 
+  if (existingCustomer) {
+    customerId = existingCustomer.id;
+    await db.run(
+      `UPDATE customers SET 
+        order_count = order_count + 1,
+        total_spent_cents = total_spent_cents + ?,
+        last_order_at = ?,
+        updated_at = ?
+      WHERE id = ?`,
+      [totalCents, timestamp, timestamp, customerId]
+    );
+  } else {
+    customerId = uuid();
+    await db.run(
+      `INSERT INTO customers (id, store_id, email, order_count, total_spent_cents, last_order_at)
+       VALUES (?, ?, ?, 1, ?, ?)`,
+      [customerId, store.id, customer_email, totalCents, timestamp]
+    );
+  }
+
+  // Generate order number (timestamp-based to avoid race conditions)
+  const orderNumber = generateOrderNumber();
   const orderId = uuid();
 
-  // Create order
+  // Create order (with customer link and discount)
   await db.run(
-    `INSERT INTO orders (id, store_id, number, status, customer_email, subtotal_cents, tax_cents, shipping_cents, total_cents, discount_code, discount_id, discount_amount_cents, created_at)
-     VALUES (?, ?, ?, 'paid', ?, ?, 0, 0, ?, ?, ?, ?, ?)`,
-    [orderId, store.id, orderNumber, customer_email, subtotal, totalCents, discountCode, discountId, discountAmountCents, timestamp]
+    `INSERT INTO orders (id, store_id, customer_id, number, status, customer_email, subtotal_cents, tax_cents, shipping_cents, total_cents, discount_code, discount_id, discount_amount_cents, created_at)
+     VALUES (?, ?, ?, ?, 'paid', ?, ?, 0, 0, ?, ?, ?, ?, ?)`,
+    [orderId, store.id, customerId, orderNumber, customer_email, subtotal, totalCents, discountCode, discountId, discountAmountCents, timestamp]
   );
 
   // Create order items and deduct inventory
@@ -401,7 +437,12 @@ function formatOrder(order: any, items: any[]) {
     number: order.number,
     status: order.status,
     customer_email: order.customer_email,
-    ship_to: order.ship_to ? JSON.parse(order.ship_to) : null,
+    customer_id: order.customer_id || null,
+    shipping: {
+      name: order.shipping_name || null,
+      phone: order.shipping_phone || null,
+      address: order.ship_to ? JSON.parse(order.ship_to) : null,
+    },
     amounts: {
       subtotal_cents: order.subtotal_cents,
       discount_cents: order.discount_amount_cents || 0,

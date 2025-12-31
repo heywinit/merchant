@@ -1,11 +1,13 @@
 {
-  "name": "merchant-api",
+  "name": "merchant",
   "main": "src/index.ts",
   "compatibility_date": "2025-12-01",
 
   "d1_databases": [
     {
-      "binding": "DB"
+      "binding": "DB",
+      "database_name": "merchant-db",
+      "database_id": "local"
     }
   ],
 

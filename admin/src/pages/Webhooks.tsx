@@ -1,10 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, RefreshCw, Plus, Trash2, Copy, Check, AlertCircle, CheckCircle, Clock, RotateCw, ExternalLink } from 'lucide-react';
+import { Loader2, RefreshCw, Plus, Trash2, Copy, Check, AlertCircle, CheckCircle, Clock, RotateCw } from 'lucide-react';
 import { api, Webhook, WebhookDetail } from '../lib/api';
 import { Modal } from '../components/Modal';
-import { SlideOver } from '../components/SlideOver';
-import clsx from 'clsx';
 
 const WEBHOOK_EVENTS = [
   { value: 'order.created', label: 'Order Created', description: 'When a new order is placed' },
@@ -134,7 +132,7 @@ export function Webhooks() {
           </div>
         ) : webhooks.length === 0 ? (
           <div className="py-12 text-center">
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
               No webhooks configured
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
@@ -185,30 +183,33 @@ export function Webhooks() {
       <Modal open={createModal} onClose={() => setCreateModal(false)} title="New Webhook" size="md">
         <form onSubmit={handleCreate} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-1">Endpoint URL</label>
+            <label className="block text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+              Endpoint URL
+            </label>
             <input
               type="url"
               value={newUrl}
               onChange={(e) => setNewUrl(e.target.value)}
               placeholder="https://your-server.com/webhook"
               required
-              className="w-full px-3 py-2 text-sm font-mono rounded focus:outline-none focus:ring-2"
+              className="w-full px-3 py-2 text-sm font-mono rounded-lg focus:outline-none focus:ring-2"
               style={{
-                background: 'var(--bg-content)',
+                background: 'var(--bg-card)',
                 border: '1px solid var(--border)',
                 color: 'var(--text)',
-                '--tw-ring-color': 'var(--accent)',
-              } as React.CSSProperties}
+              }}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Events</label>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
+            <label className="block text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+              Events
+            </label>
+            <div className="space-y-2 max-h-48 overflow-y-auto p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
               {WEBHOOK_EVENTS.map((event) => (
                 <label
                   key={event.value}
-                  className="flex items-start gap-3 p-2 rounded cursor-pointer transition-colors hover:bg-[var(--bg-hover)]"
+                  className="flex items-start gap-3 p-2 rounded-lg cursor-pointer transition-colors hover:bg-[var(--bg-hover)]"
                 >
                   <input
                     type="checkbox"
@@ -217,7 +218,7 @@ export function Webhooks() {
                     className="mt-0.5"
                   />
                   <div>
-                    <p className="text-sm font-medium">{event.label}</p>
+                    <p className="text-sm font-mono">{event.label}</p>
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       {event.description}
                     </p>
@@ -227,20 +228,20 @@ export function Webhooks() {
             </div>
           </div>
 
-          <div className="flex gap-2 justify-end pt-2">
+          <div className="flex gap-2 justify-end pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
             <button
               type="button"
               onClick={() => setCreateModal(false)}
               className="px-4 py-2 text-sm font-medium"
-              style={{ color: 'var(--text-secondary)' }}
+              style={{ color: 'var(--text-muted)' }}
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={createMutation.isPending || newEvents.length === 0}
-              className="px-4 py-2 text-sm font-semibold rounded disabled:opacity-50"
-              style={{ background: 'var(--accent)', color: 'var(--text-inverse)' }}
+              className="px-4 py-2 text-sm font-semibold rounded-lg disabled:opacity-50"
+              style={{ background: 'var(--accent)', color: 'white' }}
             >
               {createMutation.isPending ? 'Creating...' : 'Create Webhook'}
             </button>
@@ -253,13 +254,10 @@ export function Webhooks() {
         open={!!newSecret}
         onClose={() => setNewSecret(null)}
         title="Webhook Secret"
-        size="md"
+        size="sm"
       >
         <div className="space-y-4">
-          <div
-            className="p-3 rounded text-sm"
-            style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}
-          >
+          <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
             <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
               Save this secret — it won't be shown again
             </p>
@@ -267,67 +265,65 @@ export function Webhooks() {
               <code className="flex-1 font-mono text-xs break-all">{newSecret}</code>
               <button
                 onClick={() => copySecret(newSecret!)}
-                className="p-2 rounded hover:bg-[var(--bg-hover)] flex-shrink-0"
+                className="p-2 rounded-lg hover:bg-[var(--bg-hover)] flex-shrink-0"
                 style={{ color: 'var(--text-muted)' }}
               >
                 {copiedSecret ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
               </button>
             </div>
           </div>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
             Use this secret to verify webhook signatures. Each delivery includes an{' '}
-            <code className="text-xs">X-Merchant-Signature</code> header with an HMAC-SHA256 signature.
+            <code className="text-xs">X-Merchant-Signature</code> header.
           </p>
           <button
             onClick={() => setNewSecret(null)}
-            className="w-full px-4 py-2 text-sm font-semibold rounded"
-            style={{ background: 'var(--accent)', color: 'var(--text-inverse)' }}
+            className="w-full px-4 py-2 text-sm font-semibold rounded-lg"
+            style={{ background: 'var(--accent)', color: 'white' }}
           >
             Done
           </button>
         </div>
       </Modal>
 
-      {/* Webhook Detail Slide-over */}
-      <SlideOver
+      {/* Webhook Detail Modal */}
+      <Modal
         open={!!selectedWebhook}
         onClose={() => setSelectedWebhook(null)}
         title="Webhook Details"
-        width="lg"
+        size="lg"
       >
         {webhookDetail && (
-          <div className="space-y-6">
-            {/* URL */}
-            <div>
+          <div className="space-y-5">
+            {/* URL & Status */}
+            <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
               <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
                 Endpoint
               </h4>
               <p className="font-mono text-sm break-all">{webhookDetail.url}</p>
-            </div>
-
-            {/* Status */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Status
-              </h4>
-              <select
-                value={webhookDetail.status}
-                onChange={(e) => updateMutation.mutate({ id: webhookDetail.id, data: { status: e.target.value } })}
-                disabled={updateMutation.isPending}
-                className="px-3 py-2 text-sm rounded focus:outline-none focus:ring-2"
-                style={{
-                  background: 'var(--bg-content)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                }}
-              >
-                <option value="active">Active</option>
-                <option value="disabled">Disabled</option>
-              </select>
+              <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border-subtle)' }}>
+                <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                  Status
+                </h4>
+                <select
+                  value={webhookDetail.status}
+                  onChange={(e) => updateMutation.mutate({ id: webhookDetail.id, data: { status: e.target.value } })}
+                  disabled={updateMutation.isPending}
+                  className="px-3 py-2 text-sm font-mono rounded-lg focus:outline-none focus:ring-2"
+                  style={{
+                    background: 'var(--bg-card)',
+                    border: '1px solid var(--border)',
+                    color: 'var(--text)',
+                  }}
+                >
+                  <option value="active">active</option>
+                  <option value="disabled">disabled</option>
+                </select>
+              </div>
             </div>
 
             {/* Events */}
-            <div>
+            <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
               <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
                 Subscribed Events
               </h4>
@@ -335,8 +331,8 @@ export function Webhooks() {
                 {webhookDetail.events.map((event) => (
                   <span
                     key={event}
-                    className="px-2 py-1 text-xs font-mono rounded"
-                    style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}
+                    className="px-2 py-1 text-xs font-mono rounded-lg"
+                    style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}
                   >
                     {event}
                   </span>
@@ -344,33 +340,13 @@ export function Webhooks() {
               </div>
             </div>
 
-            {/* Secret */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
-                Signing Secret
-              </h4>
-              <button
-                onClick={() => {
-                  if (confirm('This will invalidate the current secret. Continue?')) {
-                    rotateSecretMutation.mutate(webhookDetail.id);
-                  }
-                }}
-                disabled={rotateSecretMutation.isPending}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded transition-colors hover:bg-[var(--bg-hover)]"
-                style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-              >
-                <RotateCw size={14} />
-                {rotateSecretMutation.isPending ? 'Rotating...' : 'Rotate Secret'}
-              </button>
-            </div>
-
             {/* Recent Deliveries */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+            <div className="p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
+              <h4 className="text-xs font-medium uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
                 Recent Deliveries
               </h4>
               {webhookDetail.recent_deliveries.length === 0 ? (
-                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-sm font-mono" style={{ color: 'var(--text-secondary)' }}>
                   No deliveries yet
                 </p>
               ) : (
@@ -378,59 +354,72 @@ export function Webhooks() {
                   {webhookDetail.recent_deliveries.map((delivery) => (
                     <div
                       key={delivery.id}
-                      className="p-3 rounded"
-                      style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}
+                      className="flex items-center justify-between py-2 border-b last:border-0"
+                      style={{ borderColor: 'var(--border-subtle)' }}
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {delivery.status === 'success' && (
-                            <CheckCircle size={14} className="text-green-500" />
-                          )}
-                          {delivery.status === 'failed' && (
-                            <AlertCircle size={14} className="text-red-500" />
-                          )}
-                          {delivery.status === 'pending' && (
-                            <Clock size={14} className="text-amber-500" />
-                          )}
-                          <span className="font-mono text-sm">{delivery.event_type}</span>
-                        </div>
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <div className="flex items-center gap-2">
+                        {delivery.status === 'success' && (
+                          <CheckCircle size={14} className="text-green-500" />
+                        )}
+                        {delivery.status === 'failed' && (
+                          <AlertCircle size={14} className="text-red-500" />
+                        )}
+                        {delivery.status === 'pending' && (
+                          <Clock size={14} className="text-amber-500" />
+                        )}
+                        <span className="font-mono text-sm">{delivery.event_type}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
                           {delivery.response_code && `${delivery.response_code} · `}
                           {delivery.attempts} attempt{delivery.attempts !== 1 ? 's' : ''}
                         </span>
+                        <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(delivery.created_at).toLocaleString()}
+                        </p>
                       </div>
-                      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                        {new Date(delivery.created_at).toLocaleString()}
-                      </p>
                     </div>
                   ))}
                 </div>
               )}
             </div>
 
-            {/* Actions */}
-            <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-              <button
-                onClick={() => {
-                  if (confirm('Delete this webhook? This cannot be undone.')) {
-                    deleteMutation.mutate(webhookDetail.id);
-                  }
-                }}
-                disabled={deleteMutation.isPending}
-                className="inline-flex items-center gap-2 px-3 py-2 text-sm text-red-500 rounded transition-colors hover:bg-red-500/10"
-              >
-                <Trash2 size={14} />
-                {deleteMutation.isPending ? 'Deleting...' : 'Delete Webhook'}
-              </button>
-            </div>
-
-            {/* Meta */}
-            <div className="pt-4 border-t text-xs" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-              <p>Created {new Date(webhookDetail.created_at).toLocaleString()}</p>
+            {/* Footer: Timestamp + Actions */}
+            <div className="flex items-center justify-between pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              <p className="text-xs font-mono" style={{ color: 'var(--text-muted)' }}>
+                Created {new Date(webhookDetail.created_at).toLocaleString()}
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    if (confirm('This will invalidate the current secret. Continue?')) {
+                      rotateSecretMutation.mutate(webhookDetail.id);
+                    }
+                  }}
+                  disabled={rotateSecretMutation.isPending}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium hover:underline"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <RotateCw size={14} />
+                  {rotateSecretMutation.isPending ? 'Rotating...' : 'Rotate Secret'}
+                </button>
+                <button
+                  onClick={() => {
+                    if (confirm('Delete this webhook? This cannot be undone.')) {
+                      deleteMutation.mutate(webhookDetail.id);
+                    }
+                  }}
+                  disabled={deleteMutation.isPending}
+                  className="inline-flex items-center gap-1.5 text-sm font-medium text-red-500 hover:text-red-600"
+                >
+                  <Trash2 size={14} />
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
             </div>
           </div>
         )}
-      </SlideOver>
+      </Modal>
     </div>
   );
 }

@@ -25,7 +25,7 @@ function generateApiKey(prefix: 'pk' | 'sk'): string {
 
 function runSql(sql: string) {
   const escaped = sql.replace(/'/g, "'\\''");
-  execSync(`wrangler d1 execute merchant-db --local --command='${escaped}'`, {
+  execSync(`npx wrangler d1 execute merchant-db --local --command='${escaped}'`, {
     stdio: 'inherit',
   });
 }
@@ -35,7 +35,7 @@ async function init() {
 
   // Apply schema
   console.log('📋 Applying schema...');
-  execSync('wrangler d1 execute merchant-db --local --file=schema-d1.sql', {
+  execSync('npx wrangler d1 execute merchant-db --local --file=schema-d1.sql', {
     stdio: 'inherit',
   });
 

@@ -47,28 +47,40 @@ catalogRoutes.get('/', async (c) => {
   const hasMore = products.length > limit;
   if (hasMore) products.pop();
 
-  const items = await Promise.all(
-    products.map(async (p) => {
-      const variants = await db.query<any>(
-        `SELECT * FROM variants WHERE product_id = ? ORDER BY created_at ASC`,
-        [p.id]
-      );
-      return {
-        id: p.id,
-        title: p.title,
-        description: p.description,
-        status: p.status,
-        created_at: p.created_at,
-        variants: variants.map((v) => ({
-          id: v.id,
-          sku: v.sku,
-          title: v.title,
-          price_cents: v.price_cents,
-          image_url: v.image_url,
-        })),
-      };
-    })
-  );
+  // Batch fetch all variants for these products (avoids N+1 query)
+  const productIds = products.map((p) => p.id);
+  let variantsByProduct: Record<string, any[]> = {};
+  
+  if (productIds.length > 0) {
+    const placeholders = productIds.map(() => '?').join(',');
+    const allVariants = await db.query<any>(
+      `SELECT * FROM variants WHERE product_id IN (${placeholders}) ORDER BY created_at ASC`,
+      productIds
+    );
+    
+    // Group variants by product_id
+    for (const v of allVariants) {
+      if (!variantsByProduct[v.product_id]) {
+        variantsByProduct[v.product_id] = [];
+      }
+      variantsByProduct[v.product_id].push(v);
+    }
+  }
+
+  const items = products.map((p) => ({
+    id: p.id,
+    title: p.title,
+    description: p.description,
+    status: p.status,
+    created_at: p.created_at,
+    variants: (variantsByProduct[p.id] || []).map((v) => ({
+      id: v.id,
+      sku: v.sku,
+      title: v.title,
+      price_cents: v.price_cents,
+      image_url: v.image_url,
+    })),
+  }));
 
   const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].created_at : null;
 
@@ -323,6 +335,83 @@ catalogRoutes.patch('/:id/variants/:variantId', adminOnly, async (c) => {
     price_cents: variant.price_cents,
     image_url: variant.image_url,
   });
+});
+
+// DELETE /v1/products/:id (admin only)
+catalogRoutes.delete('/:id', adminOnly, async (c) => {
+  const id = c.req.param('id');
+  const { store } = c.get('auth');
+  const db = getDb(c.env);
+
+  const [product] = await db.query<any>(
+    `SELECT * FROM products WHERE id = ? AND store_id = ?`,
+    [id, store.id]
+  );
+  if (!product) throw ApiError.notFound('Product not found');
+
+  // Check if any variants have been used in orders
+  const variants = await db.query<any>(
+    `SELECT sku FROM variants WHERE product_id = ?`,
+    [id]
+  );
+  
+  if (variants.length > 0) {
+    const skus = variants.map((v) => v.sku);
+    const placeholders = skus.map(() => '?').join(',');
+    const [orderItem] = await db.query<any>(
+      `SELECT id FROM order_items WHERE sku IN (${placeholders}) LIMIT 1`,
+      skus
+    );
+    
+    if (orderItem) {
+      throw ApiError.conflict('Cannot delete product with variants that have been ordered. Set status to draft instead.');
+    }
+  }
+
+  // Delete inventory records for all variants
+  for (const v of variants) {
+    await db.run(`DELETE FROM inventory WHERE sku = ? AND store_id = ?`, [v.sku, store.id]);
+  }
+
+  // Delete variants
+  await db.run(`DELETE FROM variants WHERE product_id = ?`, [id]);
+  
+  // Delete product
+  await db.run(`DELETE FROM products WHERE id = ?`, [id]);
+
+  return c.json({ deleted: true });
+});
+
+// DELETE /v1/products/:id/variants/:variantId (admin only)
+catalogRoutes.delete('/:id/variants/:variantId', adminOnly, async (c) => {
+  const productId = c.req.param('id');
+  const variantId = c.req.param('variantId');
+  const { store } = c.get('auth');
+  const db = getDb(c.env);
+
+  const [variant] = await db.query<any>(
+    `SELECT * FROM variants WHERE id = ? AND product_id = ? AND store_id = ?`,
+    [variantId, productId, store.id]
+  );
+  if (!variant) throw ApiError.notFound('Variant not found');
+
+  // Check if variant has been used in any orders
+  const [orderItem] = await db.query<any>(
+    `SELECT id FROM order_items WHERE sku = ? LIMIT 1`,
+    [variant.sku]
+  );
+  
+  if (orderItem) {
+    throw ApiError.conflict('Cannot delete variant that has been ordered. Set product status to draft instead.');
+  }
+
+  // Delete inventory record
+  await db.run(`DELETE FROM inventory WHERE sku = ? AND store_id = ?`, [variant.sku, store.id]);
+  
+  // Delete variant
+  await db.run(`DELETE FROM variants WHERE id = ?`, [variantId]);
+
+  return c.json({ deleted: true });
 });
 
 export { catalogRoutes as catalog };

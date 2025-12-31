@@ -11,7 +11,7 @@ import {
 } from '@tanstack/react-table';
 import { Search, ChevronUp, ChevronDown, ChevronsUpDown, Loader2, RefreshCw, AlertTriangle, Package } from 'lucide-react';
 import { api, InventoryItem } from '../lib/api';
-import { SlideOver } from '../components/SlideOver';
+import { Modal } from '../components/Modal';
 import clsx from 'clsx';
 
 const columnHelper = createColumnHelper<InventoryItem>();
@@ -40,7 +40,6 @@ export function Inventory() {
       api.adjustInventory(sku, { delta, reason }),
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ['inventory'] });
-      // Update selected item with new values
       setSelectedItem(updated);
       setAdjustDelta('');
     },
@@ -49,29 +48,29 @@ export function Inventory() {
   const columns = useMemo(() => [
     columnHelper.accessor('sku', {
       header: 'SKU',
-      cell: (info) => <span className="font-mono">{info.getValue()}</span>,
+      cell: (info) => <span className="font-mono text-sm">{info.getValue()}</span>,
     }),
     columnHelper.accessor('product_title', {
       header: 'Product',
-      cell: (info) => info.getValue() || '-',
+      cell: (info) => <span className="font-mono text-sm">{info.getValue() || '-'}</span>,
     }),
     columnHelper.accessor('on_hand', {
-      header: () => <span className="block text-right">On Hand</span>,
-      cell: (info) => <span className="block text-right font-mono">{info.getValue()}</span>,
+      header: 'On Hand',
+      cell: (info) => <span className="font-mono text-sm">{info.getValue()}</span>,
     }),
     columnHelper.accessor('reserved', {
-      header: () => <span className="block text-right">Reserved</span>,
-      cell: (info) => <span className="block text-right font-mono">{info.getValue()}</span>,
+      header: 'Reserved',
+      cell: (info) => <span className="font-mono text-sm">{info.getValue()}</span>,
     }),
     columnHelper.accessor('available', {
-      header: () => <span className="block text-right">Available</span>,
+      header: 'Available',
       cell: (info) => {
         const value = info.getValue();
         const isLow = value <= 5 && value > 0;
         const isOut = value <= 0;
         return (
           <span className={clsx(
-            'block text-right font-mono',
+            'font-mono text-sm',
             isOut && 'text-red-500',
             isLow && 'text-amber-500'
           )}>
@@ -119,13 +118,13 @@ export function Inventory() {
 
       {/* Table card */}
       <div
-        className="rounded overflow-hidden"
-        style={{ background: 'var(--bg-content)', border: '1px solid var(--border)' }}
+        className="rounded-lg overflow-hidden"
+        style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
       >
         {/* Search */}
         <div
           className="flex items-center border-b"
-          style={{ background: 'var(--bg-subtle)', borderColor: 'var(--border)' }}
+          style={{ borderColor: 'var(--border)' }}
         >
           <div className="flex-1 flex items-center gap-2 px-4 py-3" style={{ color: 'var(--text-muted)' }}>
             <Search size={16} className="flex-shrink-0" />
@@ -133,8 +132,8 @@ export function Inventory() {
               type="text"
               value={globalFilter}
               onChange={(e) => setGlobalFilter(e.target.value)}
-              placeholder="Search SKUs..."
-              className="bg-transparent border-0 text-sm w-full focus:outline-none font-mono"
+              placeholder="Search..."
+              className="bg-transparent border-0 font-mono text-sm w-full focus:outline-none"
               style={{ color: 'var(--text)' }}
             />
           </div>
@@ -150,19 +149,19 @@ export function Inventory() {
             No inventory yet
           </div>
         ) : (
-          <table className="w-full font-mono text-[13px]">
-            <thead style={{ background: 'var(--bg-subtle)' }}>
+          <table className="w-full">
+            <thead>
               {table.getHeaderGroups().map((headerGroup) => (
-                <tr key={headerGroup.id}>
+                <tr key={headerGroup.id} style={{ borderBottom: '1px solid var(--border)' }}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
                       onClick={header.column.getCanSort() ? header.column.getToggleSortingHandler() : undefined}
                       className={clsx(
-                        'px-4 py-2.5 text-left text-xs font-medium font-sans uppercase tracking-wide',
+                        'px-4 py-3 text-left text-xs font-medium uppercase tracking-wide',
                         header.column.getCanSort() && 'cursor-pointer select-none hover:bg-[var(--bg-hover)]'
                       )}
-                      style={{ color: 'var(--text-secondary)' }}
+                      style={{ color: 'var(--text-muted)' }}
                     >
                       <div className="flex items-center gap-1">
                         {flexRender(header.column.columnDef.header, header.getContext())}
@@ -207,138 +206,126 @@ export function Inventory() {
         )}
       </div>
 
-      {/* Inventory Detail Slide-over */}
-      <SlideOver
+      {/* Inventory Detail Modal */}
+      <Modal
         open={!!selectedItem}
         onClose={() => {
           setSelectedItem(null);
           setAdjustDelta('');
         }}
         title={selectedItem?.sku || 'Inventory'}
-        width="md"
+        size="md"
       >
         {selectedItem && (
-          <div className="space-y-6">
+          <div className="space-y-5">
             {/* Product info */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 p-3 rounded-lg" style={{ border: '1px solid var(--border)' }}>
               <div
-                className="w-12 h-12 flex items-center justify-center rounded"
-                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border)' }}
+                className="w-10 h-10 flex items-center justify-center rounded-lg"
+                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}
               >
-                <Package size={20} style={{ color: 'var(--text-muted)' }} />
+                <Package size={18} style={{ color: 'var(--text-secondary)' }} />
               </div>
               <div>
-                <p className="font-mono font-medium">{selectedItem.sku}</p>
-                <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <p className="font-mono text-sm font-medium">{selectedItem.sku}</p>
+                <p className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
                   {selectedItem.product_title || 'Unknown product'}
                 </p>
               </div>
             </div>
 
             {/* Stock levels */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
-                Stock Levels
-              </h4>
-              <div
-                className="grid grid-cols-3 gap-4 p-4 rounded"
-                style={{ background: 'var(--bg-subtle)', border: '1px solid var(--border-subtle)' }}
-              >
-                <div className="text-center">
-                  <p className="text-2xl font-mono font-semibold">{selectedItem.on_hand}</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>On Hand</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-2xl font-mono font-semibold">{selectedItem.reserved}</p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Reserved</p>
-                </div>
-                <div className="text-center">
-                  <p className={clsx(
-                    'text-2xl font-mono font-semibold',
-                    selectedItem.available <= 0 && 'text-red-500',
-                    selectedItem.available > 0 && selectedItem.available <= 5 && 'text-amber-500'
-                  )}>
-                    {selectedItem.available}
-                  </p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Available</p>
-                </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-lg text-center" style={{ border: '1px solid var(--border)' }}>
+                <p className="text-2xl font-mono font-semibold">{selectedItem.on_hand}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>On Hand</p>
+              </div>
+              <div className="p-3 rounded-lg text-center" style={{ border: '1px solid var(--border)' }}>
+                <p className="text-2xl font-mono font-semibold">{selectedItem.reserved}</p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Reserved</p>
+              </div>
+              <div className="p-3 rounded-lg text-center" style={{ border: '1px solid var(--border)' }}>
+                <p className={clsx(
+                  'text-2xl font-mono font-semibold',
+                  selectedItem.available <= 0 && 'text-red-500',
+                  selectedItem.available > 0 && selectedItem.available <= 5 && 'text-amber-500'
+                )}>
+                  {selectedItem.available}
+                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>Available</p>
               </div>
             </div>
 
             {/* Adjust form */}
-            <div>
-              <h4 className="text-xs font-medium uppercase tracking-wide mb-3" style={{ color: 'var(--text-secondary)' }}>
-                Adjust Inventory
-              </h4>
-              <form onSubmit={handleAdjust} className="space-y-3">
+            <form onSubmit={handleAdjust} className="space-y-4 pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Quantity (+/-)</label>
+                  <label className="block text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    Quantity (+/-)
+                  </label>
                   <input
                     type="number"
                     value={adjustDelta}
                     onChange={(e) => setAdjustDelta(e.target.value)}
                     placeholder="e.g. 50 or -10"
                     required
-                    className="w-full px-3 py-2 text-sm font-mono rounded focus:outline-none focus:ring-2"
+                    className="w-full px-3 py-2 text-sm font-mono rounded-lg focus:outline-none focus:ring-2"
                     style={{
-                      background: 'var(--bg-content)',
+                      background: 'var(--bg-card)',
                       border: '1px solid var(--border)',
                       color: 'var(--text)',
-                      '--tw-ring-color': 'var(--accent)',
-                    } as React.CSSProperties}
+                    }}
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium mb-1">Reason</label>
+                  <label className="block text-xs font-medium uppercase tracking-wide mb-2" style={{ color: 'var(--text-secondary)' }}>
+                    Reason
+                  </label>
                   <select
                     value={adjustReason}
                     onChange={(e) => setAdjustReason(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded focus:outline-none focus:ring-2"
+                    className="w-full px-3 py-2 text-sm font-mono rounded-lg focus:outline-none focus:ring-2"
                     style={{
-                      background: 'var(--bg-content)',
+                      background: 'var(--bg-card)',
                       border: '1px solid var(--border)',
                       color: 'var(--text)',
-                      '--tw-ring-color': 'var(--accent)',
-                    } as React.CSSProperties}
+                    }}
                   >
                     {ADJUST_REASONS.map((r) => (
                       <option key={r} value={r}>{r.charAt(0).toUpperCase() + r.slice(1)}</option>
                     ))}
                   </select>
                 </div>
+              </div>
 
-                <button
-                  type="submit"
-                  disabled={adjustMutation.isPending || !adjustDelta}
-                  className="w-full px-4 py-2 text-sm font-semibold rounded transition-colors disabled:opacity-50"
-                  style={{ background: 'var(--accent)', color: 'var(--text-inverse)' }}
-                >
-                  {adjustMutation.isPending ? 'Adjusting...' : 'Apply Adjustment'}
-                </button>
-              </form>
-            </div>
-
-            {/* Quick actions */}
-            <div className="pt-4 border-t" style={{ borderColor: 'var(--border)' }}>
-              <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>Quick adjustments</p>
-              <div className="flex gap-2">
+              {/* Quick actions */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Quick:</span>
                 {[10, 25, 50, 100].map((n) => (
                   <button
                     key={n}
                     type="button"
                     onClick={() => setAdjustDelta(String(n))}
-                    className="px-3 py-1.5 text-sm font-mono rounded transition-colors hover:bg-[var(--bg-hover)]"
-                    style={{ border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                    className="px-2 py-1 text-xs font-mono rounded-lg transition-colors hover:bg-[var(--bg-hover)]"
+                    style={{ border: '1px solid var(--border)', color: 'var(--text-muted)' }}
                   >
                     +{n}
                   </button>
                 ))}
               </div>
-            </div>
+
+              <button
+                type="submit"
+                disabled={adjustMutation.isPending || !adjustDelta}
+                className="w-full px-4 py-2.5 text-sm font-semibold rounded-lg transition-colors disabled:opacity-50"
+                style={{ background: 'var(--accent)', color: 'white' }}
+              >
+                {adjustMutation.isPending ? 'Adjusting...' : 'Apply Adjustment'}
+              </button>
+            </form>
           </div>
         )}
-      </SlideOver>
+      </Modal>
     </div>
   );
 }
