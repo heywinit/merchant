@@ -156,6 +156,8 @@ CREATE TABLE IF NOT EXISTS discounts (
   usage_limit INTEGER,
   usage_limit_per_customer INTEGER DEFAULT 1,
   usage_count INTEGER NOT NULL DEFAULT 0,
+  stripe_coupon_id TEXT,
+  stripe_promotion_code_id TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE(store_id, code)
@@ -213,10 +215,14 @@ CREATE INDEX IF NOT EXISTS idx_variants_store_sku ON variants(store_id, sku);
 CREATE INDEX IF NOT EXISTS idx_inventory_store_sku ON inventory(store_id, sku);
 CREATE INDEX IF NOT EXISTS idx_carts_store ON carts(store_id);
 CREATE INDEX IF NOT EXISTS idx_carts_expires ON carts(expires_at);
+CREATE INDEX IF NOT EXISTS idx_carts_discount_id ON carts(discount_id);
 CREATE INDEX IF NOT EXISTS idx_orders_store ON orders(store_id);
 CREATE INDEX IF NOT EXISTS idx_discounts_store_code ON discounts(store_id, code);
+CREATE INDEX IF NOT EXISTS idx_discounts_status ON discounts(status);
 CREATE INDEX IF NOT EXISTS idx_discount_usage_order ON discount_usage(order_id);
 CREATE INDEX IF NOT EXISTS idx_discount_usage_customer ON discount_usage(discount_id, customer_email);
+-- Unique constraint for idempotency: prevent duplicate discount_usage records for same order+discount
+CREATE UNIQUE INDEX IF NOT EXISTS idx_discount_usage_order_discount ON discount_usage(order_id, discount_id);
 CREATE INDEX IF NOT EXISTS idx_webhooks_store ON webhooks(store_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook ON webhook_deliveries(webhook_id);
 CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status);

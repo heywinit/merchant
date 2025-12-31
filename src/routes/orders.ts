@@ -296,13 +296,11 @@ ordersRoutes.post('/test', async (c) => {
 
   const totalCents = subtotal - discountAmountCents;
 
-  // Generate order number (consistent 4-digit padding with webhook)
+  // This prevents race conditions that could occur with COUNT(*) based numbering
   const timestamp = now();
-  const orderCount = await db.query<any>(
-    `SELECT COUNT(*) as count FROM orders WHERE store_id = ?`,
-    [store.id]
-  );
-  const orderNumber = `ORD-${String((orderCount[0]?.count || 0) + 1).padStart(4, '0')}`;
+  const timestampMs = Date.now();
+  const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  const orderNumber = `ORD-${timestampMs}-${randomSuffix}`;
 
   const orderId = uuid();
 
@@ -329,21 +327,68 @@ ordersRoutes.post('/test', async (c) => {
 
   // Track discount usage if discount was applied
   if (discount && discountAmountCents > 0) {
-    // Increment usage count
-    await db.run(
-      `UPDATE discounts 
-       SET usage_count = usage_count + 1, updated_at = ? 
-       WHERE id = ? 
-         AND (usage_limit IS NULL OR usage_count < usage_limit)`,
-      [timestamp, discountId]
-    );
+    const currentTime = now();
+    
+    // Check per-customer limit first
+    // Note: There's a small race condition window here, but for test orders (admin-only),
+    // this is acceptable. The unique constraint on discount_usage will prevent duplicates.
+    if (discount.usage_limit_per_customer !== null) {
+      const [usage] = await db.query<any>(
+        `SELECT COUNT(*) as count FROM discount_usage WHERE discount_id = ? AND customer_email = ?`,
+        [discount.id, customer_email.toLowerCase()]
+      );
+      if (usage && usage.count >= discount.usage_limit_per_customer) {
+        throw ApiError.invalidRequest('You have already used this discount');
+      }
+    }
+    
+    // Atomically increment usage_count only if within global limit
+    if (discount.usage_limit !== null) {
+      const result = await db.run(
+        `UPDATE discounts 
+         SET usage_count = usage_count + 1, updated_at = ? 
+         WHERE id = ? 
+           AND status = 'active'
+           AND (starts_at IS NULL OR starts_at <= ?)
+           AND (expires_at IS NULL OR expires_at >= ?)
+           AND usage_count < usage_limit`,
+        [currentTime, discountId, currentTime, currentTime]
+      );
+      
+      if (result.changes === 0) {
+        throw ApiError.invalidRequest('Discount usage limit reached');
+      }
+    } else {
+      // No usage limit, but validate discount is still active
+      const result = await db.run(
+        `UPDATE discounts 
+         SET updated_at = ? 
+         WHERE id = ? 
+           AND status = 'active'
+           AND (starts_at IS NULL OR starts_at <= ?)
+           AND (expires_at IS NULL OR expires_at >= ?)`,
+        [currentTime, discountId, currentTime, currentTime]
+      );
+      
+      if (result.changes === 0) {
+        throw ApiError.invalidRequest('Discount is no longer valid');
+      }
+    }
 
     // Record usage for per-customer tracking
-    await db.run(
-      `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
-       VALUES (?, ?, ?, ?, ?)`,
-      [uuid(), discountId, orderId, customer_email.toLowerCase(), discountAmountCents]
+    const [existingUsage] = await db.query<any>(
+      `SELECT id FROM discount_usage WHERE order_id = ? AND discount_id = ?`,
+      [orderId, discountId]
     );
+    
+    if (!existingUsage) {
+      await db.run(
+        `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
+         VALUES (?, ?, ?, ?, ?)`,
+        [uuid(), discountId, orderId, customer_email.toLowerCase(), discountAmountCents]
+      );
+    }
+    // If already exists, silently skip (idempotent)
   }
 
   const [order] = await db.query<any>(`SELECT * FROM orders WHERE id = ?`, [orderId]);

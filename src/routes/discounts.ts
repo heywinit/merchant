@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import Stripe from 'stripe';
 import { getDb, type Database } from '../db';
 import { authMiddleware, adminOnly } from '../middleware/auth';
 import { ApiError, uuid, now, type Env, type AuthContext } from '../types';
@@ -34,6 +35,8 @@ export interface Discount {
   usage_limit: number | null;
   usage_limit_per_customer: number | null;
   usage_count: number;
+  stripe_coupon_id: string | null;
+  stripe_promotion_code_id: string | null;
 }
 
 export async function validateDiscount(
@@ -93,6 +96,121 @@ export function calculateDiscount(
     }
     default:
       return 0;
+  }
+}
+
+/**
+ * Sync discount to Stripe as coupon and promotion code
+ * Merchant stays source of truth - Stripe is just for checkout display
+ */
+async function syncDiscountToStripe(
+  stripeSecretKey: string | null,
+  discount: {
+    id: string;
+    code: string | null;
+    type: DiscountType;
+    value: number;
+    max_discount_cents: number | null;
+    expires_at: string | null;
+    status?: string;
+    stripe_coupon_id: string | null;
+    stripe_promotion_code_id: string | null;
+  }
+): Promise<{ couponId: string | null; promotionCodeId: string | null; syncError?: string }> {
+  if (!stripeSecretKey) {
+    // Stripe not connected, return nulls
+    return { couponId: null, promotionCodeId: null };
+  }
+
+  const stripe = new Stripe(stripeSecretKey);
+
+  try {
+    // Create or update Stripe coupon
+    let couponId = discount.stripe_coupon_id;
+    
+    const couponParams: Stripe.CouponCreateParams = {
+      duration: 'once',
+      metadata: { merchant_discount_id: discount.id },
+    };
+
+    if (discount.type === 'percentage') {
+      couponParams.percent_off = discount.value;
+      if (discount.max_discount_cents) {
+        // Stripe doesn't support max discount directly, but we handle it in validation
+        // Store it in metadata for reference
+        couponParams.metadata = {
+          ...couponParams.metadata,
+          max_discount_cents: String(discount.max_discount_cents),
+        };
+      }
+    } else {
+      couponParams.amount_off = discount.value;
+      couponParams.currency = 'usd';
+    }
+
+    if (discount.expires_at) {
+      couponParams.redeem_by = Math.floor(new Date(discount.expires_at).getTime() / 1000);
+    }
+
+    if (couponId) {
+      // Update existing coupon (Stripe doesn't support updating, so we delete and recreate)
+      try {
+        await stripe.coupons.del(couponId);
+      } catch {
+        // Coupon might not exist, continue
+      }
+      couponId = null;
+    }
+
+    const coupon = await stripe.coupons.create(couponParams);
+    couponId = coupon.id;
+
+    // Create or update promotion code if discount has a code
+    let promotionCodeId = discount.stripe_promotion_code_id;
+    const isActive = discount.status !== 'inactive';
+    
+    if (discount.code && isActive) {
+      // Discount has code and is active - create or recreate promotion code
+      // (Stripe doesn't support updating promotion codes, so we deactivate old and create new)
+      if (promotionCodeId) {
+        try {
+          await stripe.promotionCodes.update(promotionCodeId, { active: false });
+        } catch {
+          // Promotion code might not exist, continue
+        }
+      }
+      
+      // Create new active promotion code
+      const promotionCode = await stripe.promotionCodes.create({
+        coupon: couponId,
+        code: discount.code.toUpperCase(),
+        active: true,
+        metadata: { merchant_discount_id: discount.id },
+      });
+      promotionCodeId = promotionCode.id;
+    } else if (promotionCodeId) {
+      // Discount is inactive or has no code - deactivate existing promotion code
+      // Keep ID in DB for reference
+      try {
+        await stripe.promotionCodes.update(promotionCodeId, { active: false });
+      } catch {
+        // Promotion code might not exist, ignore
+      }
+      // Keep promotionCodeId (don't set to null) so we have reference to deactivated code
+    }
+    // If no code and no existing promotion code, promotionCodeId stays null
+
+    return { couponId, promotionCodeId };
+  } catch (err: any) {
+    // If Stripe sync fails, log but don't fail discount creation
+    // Merchant is source of truth, Stripe is optional
+    const errorMessage = err.message || 'Unknown error';
+    console.error('Failed to sync discount to Stripe:', errorMessage);
+    return { 
+      couponId: discount.stripe_coupon_id, 
+      promotionCodeId: discount.stripe_promotion_code_id,
+      syncError: errorMessage 
+    };
   }
 }
 
@@ -206,9 +324,34 @@ discountRoutes.post('/', adminOnly, async (c) => {
   const id = uuid();
   const timestamp = now();
 
+  // Sync to Stripe if connected
+  let stripeCouponId = null;
+  let stripePromotionCodeId = null;
+  
+  if (store.stripe_secret_key) {
+    const stripeSync = await syncDiscountToStripe(store.stripe_secret_key, {
+      id,
+      code: normalizedCode,
+      type,
+      value,
+      max_discount_cents: max_discount_cents || null,
+      expires_at: expires_at || null,
+      status: 'active', // New discounts are active by default
+      stripe_coupon_id: null,
+      stripe_promotion_code_id: null,
+    });
+    stripeCouponId = stripeSync.couponId;
+    stripePromotionCodeId = stripeSync.promotionCodeId;
+    
+    // Log warning if Stripe sync failed but don't fail discount creation
+    if (stripeSync.syncError) {
+      console.warn(`Discount ${id} created but Stripe sync failed:`, stripeSync.syncError);
+    }
+  }
+
   await db.run(
-    `INSERT INTO discounts (id, store_id, code, type, value, min_purchase_cents, max_discount_cents, starts_at, expires_at, usage_limit, usage_limit_per_customer, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO discounts (id, store_id, code, type, value, min_purchase_cents, max_discount_cents, starts_at, expires_at, usage_limit, usage_limit_per_customer, stripe_coupon_id, stripe_promotion_code_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       store.id,
@@ -221,6 +364,8 @@ discountRoutes.post('/', adminOnly, async (c) => {
       expires_at || null,
       usage_limit || null,
       usage_limit_per_customer ?? 1,
+      stripeCouponId,
+      stripePromotionCodeId,
       timestamp,
       timestamp,
     ]
@@ -345,6 +490,43 @@ discountRoutes.patch('/:id', adminOnly, async (c) => {
     `SELECT * FROM discounts WHERE id = ? AND store_id = ?`,
     [id, store.id]
   );
+
+  // Sync to Stripe if any Stripe-relevant fields changed
+  // (code, value, type, max_discount_cents, expires_at, status)
+  const stripeRelevantFields = ['code', 'value', 'max_discount_cents', 'expires_at', 'status'];
+  const shouldSyncStripe = updates.some(update => 
+    stripeRelevantFields.some(field => update.includes(field))
+  );
+
+  if (shouldSyncStripe && store.stripe_secret_key) {
+    const stripeSync = await syncDiscountToStripe(store.stripe_secret_key, {
+      id: discount.id,
+      code: discount.code,
+      type: discount.type,
+      value: discount.value,
+      max_discount_cents: discount.max_discount_cents,
+      expires_at: discount.expires_at,
+      status: discount.status,
+      stripe_coupon_id: discount.stripe_coupon_id,
+      stripe_promotion_code_id: discount.stripe_promotion_code_id,
+    });
+    
+    // Log warning if Stripe sync failed but don't fail discount update
+    if (stripeSync.syncError) {
+      console.warn(`Discount ${discount.id} updated but Stripe sync failed:`, stripeSync.syncError);
+    }
+    
+    // Update Stripe IDs if they changed
+    if (stripeSync.couponId !== discount.stripe_coupon_id || 
+        stripeSync.promotionCodeId !== discount.stripe_promotion_code_id) {
+      await db.run(
+        `UPDATE discounts SET stripe_coupon_id = ?, stripe_promotion_code_id = ? WHERE id = ?`,
+        [stripeSync.couponId, stripeSync.promotionCodeId, discount.id]
+      );
+      discount.stripe_coupon_id = stripeSync.couponId;
+      discount.stripe_promotion_code_id = stripeSync.promotionCodeId;
+    }
+  }
 
   return c.json({
     id: discount.id,

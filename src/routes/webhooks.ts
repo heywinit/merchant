@@ -62,7 +62,6 @@ webhooks.post('/stripe', async (c) => {
         let discountCode = null;
         let discountId = null;
         let discountAmountCents = 0;
-        let shouldTrackUsage = false;
         const shippingCents = session.total_details?.amount_shipping ?? 0;
 
         if (session.metadata?.discount_id) {
@@ -76,30 +75,8 @@ webhooks.post('/stripe', async (c) => {
             discountId = discount.id;
             discountAmountCents = cart.discount_amount_cents || 0;
 
-            // Validate discount is still active/valid for usage tracking
-            // Even if invalid, we record the discount for accounting accuracy
-            // (customer already paid discounted amount), but skip usage counting
-            const currentTime = now();
-            const isValid =
-              discount.status === 'active' &&
-              (!discount.starts_at || currentTime >= discount.starts_at) &&
-              (!discount.expires_at || currentTime <= discount.expires_at);
-
-            shouldTrackUsage = isValid && discountAmountCents > 0;
-
-            // Atomically increment usage count only if within limits
-            // If the limit was reached between checkout and webhook, we do NOT
-            // force-increment beyond the limit - this maintains data integrity.
-            // The discount was applied at checkout when it was still valid.
-            if (shouldTrackUsage) {
-              await db.run(
-                `UPDATE discounts 
-                 SET usage_count = usage_count + 1, updated_at = ? 
-                 WHERE id = ? 
-                   AND (usage_limit IS NULL OR usage_count < usage_limit)`,
-                [currentTime, discount.id]
-              );
-            }
+            // We don't increment again here to avoid double-counting
+            // The usage_count was reserved at checkout and is now being committed with the order
           }
         }
 
@@ -107,12 +84,10 @@ webhooks.post('/stripe', async (c) => {
         // session.amount_subtotal includes discounts as negative line items, so we calculate from original items
         const subtotalCents = items.reduce((sum, item) => sum + item.unit_price_cents * item.qty, 0);
 
-        // Generate order number
-        const [countResult] = await db.query<any>(
-          `SELECT COUNT(*) as count FROM orders WHERE store_id = ?`,
-          [store.id]
-        );
-        const orderNumber = `ORD-${String(Number(countResult.count) + 1).padStart(4, '0')}`;
+        // This prevents race conditions that could occur with COUNT(*) based numbering
+        const timestamp = Date.now();
+        const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+        const orderNumber = `ORD-${timestamp}-${randomSuffix}`;
 
         // Create order
         const orderId = uuid();
@@ -132,14 +107,24 @@ webhooks.post('/stripe', async (c) => {
           ]
         );
 
-        // Track discount usage (only if discount is valid and provided value)
-        // Store email in lowercase for consistent per-customer limit checks
-        if (shouldTrackUsage && discountId) {
-          await db.run(
-            `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
-             VALUES (?, ?, ?, ?, ?)`,
-            [uuid(), discountId, orderId, cart.customer_email.toLowerCase(), discountAmountCents]
+        // Track discount usage for per-customer limit tracking
+        // Note: usage_count was already incremented at checkout time (atomic reservation)
+        // We only record the usage here for per-customer tracking and audit purposes
+        if (discountId && discountAmountCents > 0) {
+          // Check if already recorded (idempotency)
+          const [existing] = await db.query<any>(
+            `SELECT id FROM discount_usage WHERE order_id = ? AND discount_id = ?`,
+            [orderId, discountId]
           );
+          
+          if (!existing) {
+            await db.run(
+              `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
+               VALUES (?, ?, ?, ?, ?)`,
+              [uuid(), discountId, orderId, cart.customer_email.toLowerCase(), discountAmountCents]
+            );
+          }
+          // If already exists, silently skip 
         }
 
         // Create order items & update inventory
