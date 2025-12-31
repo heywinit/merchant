@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { getDb } from '../db';
 import { authMiddleware, adminOnly } from '../middleware/auth';
 import { ApiError, uuid, now, type Env, type AuthContext } from '../types';
-import { generateWebhookSecret } from '../lib/webhooks';
+import { generateWebhookSecret, retryDelivery } from '../lib/webhooks';
 
 // ============================================================
 // OUTBOUND WEBHOOKS API (CRUD)
@@ -312,13 +312,18 @@ webhooksRoutes.post('/:id/deliveries/:deliveryId/retry', async (c) => {
 
   if (!delivery) throw ApiError.notFound('Delivery not found');
 
-  // Reset for retry
+  // Reset status and actually dispatch the retry
   await db.run(
     `UPDATE webhook_deliveries SET status = 'pending', attempts = 0 WHERE id = ?`,
     [deliveryId]
   );
 
-  return c.json({ status: 'pending', message: 'Delivery queued for retry' });
+  // Actually trigger the retry delivery
+  c.executionCtx.waitUntil(
+    retryDelivery(c.env, webhook, delivery)
+  );
+
+  return c.json({ status: 'pending', message: 'Delivery retry triggered' });
 });
 
 export { webhooksRoutes };

@@ -57,6 +57,9 @@ All endpoints require `Authorization: Bearer <key>` header.
 # List products (with pagination)
 GET /v1/products?limit=20&cursor=...&status=active
 
+# Get single product
+GET /v1/products/{id}
+
 # Create product
 POST /v1/products
 {"title": "T-Shirt", "description": "Premium cotton tee"}
@@ -65,16 +68,26 @@ POST /v1/products
 PATCH /v1/products/{id}
 {"title": "Updated Title", "status": "draft"}
 
+# Delete product (fails if variants have been ordered)
+DELETE /v1/products/{id}
+
 # Add variant
 POST /v1/products/{id}/variants
 {"sku": "TEE-BLK-M", "title": "Black / M", "price_cents": 2999}
+
+# Update variant
+PATCH /v1/products/{id}/variants/{variantId}
+{"price_cents": 3499}
+
+# Delete variant (fails if ordered)
+DELETE /v1/products/{id}/variants/{variantId}
 ```
 
 ### Inventory (admin)
 
 ```bash
-# List all inventory
-GET /v1/inventory
+# List inventory (with pagination)
+GET /v1/inventory?limit=100&cursor=...&low_stock=true
 
 # Get single SKU
 GET /v1/inventory?sku=TEE-BLK-M
@@ -85,6 +98,11 @@ POST /v1/inventory/{sku}/adjust
 # reason: restock | correction | damaged | return
 ```
 
+**Query params:**
+- `limit` — Max items per page (default 100, max 500)
+- `cursor` — Pagination cursor (SKU of last item)
+- `low_stock` — Filter items with ≤10 available
+
 ### Checkout (public)
 
 ```bash
@@ -92,7 +110,10 @@ POST /v1/inventory/{sku}/adjust
 POST /v1/carts
 {"customer_email": "buyer@example.com"}
 
-# Add items to cart
+# Get cart
+GET /v1/carts/{id}
+
+# Add items to cart (replaces existing items)
 POST /v1/carts/{id}/items
 {"items": [{"sku": "TEE-BLK-M", "qty": 2}]}
 

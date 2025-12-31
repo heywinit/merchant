@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import Stripe from 'stripe';
 import { getDb } from '../db';
-import { ApiError, uuid, now, type Env } from '../types';
+import { ApiError, uuid, now, generateOrderNumber, type Env } from '../types';
 import { dispatchWebhooks } from '../lib/webhooks';
 
 // ============================================================
@@ -128,12 +128,8 @@ webhooks.post('/stripe', async (c) => {
           }
         }
 
-        // Generate order number
-        const [countResult] = await db.query<any>(
-          `SELECT COUNT(*) as count FROM orders WHERE store_id = ?`,
-          [store.id]
-        );
-        const orderNumber = `ORD-${String(Number(countResult.count) + 1).padStart(4, '0')}`;
+        // Generate order number (timestamp-based to avoid race conditions)
+        const orderNumber = generateOrderNumber();
 
         // Create order (now with customer link and shipping details)
         const orderId = uuid();

@@ -47,8 +47,10 @@ customers.get('/', async (c) => {
 
   return c.json({
     items: items.map(formatCustomer),
-    has_more: hasMore,
-    next_cursor: hasMore ? items[items.length - 1].created_at : null,
+    pagination: {
+      has_more: hasMore,
+      next_cursor: hasMore ? items[items.length - 1].created_at : null,
+    },
   });
 });
 
@@ -113,21 +115,36 @@ customers.get('/:id/orders', async (c) => {
   const hasMore = rows.length > limit;
   const items = hasMore ? rows.slice(0, -1) : rows;
 
-  // Get order items for each order
-  const ordersWithItems = await Promise.all(
-    items.map(async (order: any) => {
-      const orderItems = await db.query<any>(
-        `SELECT * FROM order_items WHERE order_id = ?`,
-        [order.id]
-      );
-      return { ...order, items: orderItems };
-    })
-  );
+  // Batch fetch all order items (avoids N+1 query)
+  const orderIds = items.map((o: any) => o.id);
+  let itemsByOrder: Record<string, any[]> = {};
+  
+  if (orderIds.length > 0) {
+    const placeholders = orderIds.map(() => '?').join(',');
+    const allItems = await db.query<any>(
+      `SELECT * FROM order_items WHERE order_id IN (${placeholders})`,
+      orderIds
+    );
+    
+    for (const item of allItems) {
+      if (!itemsByOrder[item.order_id]) {
+        itemsByOrder[item.order_id] = [];
+      }
+      itemsByOrder[item.order_id].push(item);
+    }
+  }
+
+  const ordersWithItems = items.map((order: any) => ({
+    ...order,
+    items: itemsByOrder[order.id] || [],
+  }));
 
   return c.json({
     items: ordersWithItems.map(formatOrder),
-    has_more: hasMore,
-    next_cursor: hasMore ? items[items.length - 1].created_at : null,
+    pagination: {
+      has_more: hasMore,
+      next_cursor: hasMore ? items[items.length - 1].created_at : null,
+    },
   });
 });
 
@@ -282,7 +299,7 @@ customers.delete('/:id/addresses/:addressId', async (c) => {
     );
   }
 
-  return c.json({ ok: true });
+  return c.json({ deleted: true });
 });
 
 // ------------------------------------------------------------

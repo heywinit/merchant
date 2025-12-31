@@ -312,7 +312,7 @@ export const api = {
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     if (params?.search) searchParams.set('search', params.search);
     const query = searchParams.toString();
-    return request<{ items: Customer[]; has_more: boolean; next_cursor: string | null }>(`/v1/customers${query ? `?${query}` : ''}`);
+    return request<PaginatedResponse<Customer>>(`/v1/customers${query ? `?${query}` : ''}`);
   },
 
   async getCustomer(id: string) {
@@ -324,7 +324,7 @@ export const api = {
     if (params?.limit) searchParams.set('limit', String(params.limit));
     if (params?.cursor) searchParams.set('cursor', params.cursor);
     const query = searchParams.toString();
-    return request<{ items: Order[]; has_more: boolean; next_cursor: string | null }>(`/v1/customers/${id}/orders${query ? `?${query}` : ''}`);
+    return request<PaginatedResponse<Order>>(`/v1/customers/${id}/orders${query ? `?${query}` : ''}`);
   },
 
   async updateCustomer(id: string, data: { name?: string; phone?: string; accepts_marketing?: boolean; metadata?: Record<string, unknown> }) {

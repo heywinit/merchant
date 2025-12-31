@@ -15,16 +15,20 @@ const inventoryRoutes = new Hono<{
 
 inventoryRoutes.use('*', authMiddleware, adminOnly);
 
-// GET /v1/inventory - List all inventory (optionally filter by sku)
+// GET /v1/inventory - List inventory with pagination (optionally filter by sku)
 inventoryRoutes.get('/', async (c) => {
   const sku = c.req.query('sku');
   const { store } = c.get('auth');
   const db = getDb(c.env);
 
-  // If sku provided, return single item
+  // If sku provided, return single item (with product/variant info for consistency)
   if (sku) {
     const [level] = await db.query<any>(
-      `SELECT * FROM inventory WHERE store_id = ? AND sku = ?`,
+      `SELECT i.*, v.title as variant_title, p.title as product_title
+       FROM inventory i
+       LEFT JOIN variants v ON i.sku = v.sku AND v.store_id = i.store_id
+       LEFT JOIN products p ON v.product_id = p.id
+       WHERE i.store_id = ? AND i.sku = ?`,
       [store.id, sku]
     );
 
@@ -35,19 +39,43 @@ inventoryRoutes.get('/', async (c) => {
       on_hand: level.on_hand,
       reserved: level.reserved,
       available: level.on_hand - level.reserved,
+      variant_title: level.variant_title,
+      product_title: level.product_title,
     });
   }
 
-  // Otherwise return all inventory with variant/product info
-  const items = await db.query<any>(
-    `SELECT i.*, v.title as variant_title, p.title as product_title
+  // Pagination params
+  const limit = Math.min(parseInt(c.req.query('limit') || '100'), 500);
+  const cursor = c.req.query('cursor');
+  const lowStock = c.req.query('low_stock') === 'true'; // Filter for low stock items
+
+  // Build query with pagination
+  let query = `SELECT i.*, v.title as variant_title, p.title as product_title
      FROM inventory i
      LEFT JOIN variants v ON i.sku = v.sku AND v.store_id = i.store_id
      LEFT JOIN products p ON v.product_id = p.id
-     WHERE i.store_id = ?
-     ORDER BY i.sku`,
-    [store.id]
-  );
+     WHERE i.store_id = ?`;
+  const params: unknown[] = [store.id];
+
+  if (lowStock) {
+    query += ` AND (i.on_hand - i.reserved) <= 10`;
+  }
+
+  if (cursor) {
+    query += ` AND i.sku > ?`;
+    params.push(cursor);
+  }
+
+  query += ` ORDER BY i.sku LIMIT ?`;
+  params.push(limit + 1);
+
+  const items = await db.query<any>(query, params);
+
+  // Check for next page
+  const hasMore = items.length > limit;
+  if (hasMore) items.pop();
+
+  const nextCursor = hasMore && items.length > 0 ? items[items.length - 1].sku : null;
 
   return c.json({
     items: items.map((i) => ({
@@ -58,6 +86,10 @@ inventoryRoutes.get('/', async (c) => {
       variant_title: i.variant_title,
       product_title: i.product_title,
     })),
+    pagination: {
+      has_more: hasMore,
+      next_cursor: nextCursor,
+    },
   });
 });
 
@@ -81,6 +113,11 @@ inventoryRoutes.post('/:sku/adjust', async (c) => {
     [store.id, sku]
   );
   if (!existing) throw ApiError.notFound('SKU not found');
+
+  // Prevent negative inventory
+  if (delta < 0 && existing.on_hand + delta < 0) {
+    throw ApiError.invalidRequest(`Cannot reduce inventory below 0. Current on_hand: ${existing.on_hand}`);
+  }
 
   // Update
   await db.run(

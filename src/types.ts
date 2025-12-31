@@ -82,3 +82,28 @@ export function uuid(): string {
 export function now(): string {
   return new Date().toISOString();
 }
+
+/**
+ * Generate a unique order number using timestamp + random suffix.
+ * Format: ORD-YYMMDD-XXXX (e.g., ORD-241231-A7K2)
+ * This avoids race conditions that can occur with sequential numbering.
+ */
+export function generateOrderNumber(): string {
+  const now = new Date();
+  const datePart = now.toISOString().slice(2, 10).replace(/-/g, '');
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars (0, O, 1, I)
+  let suffix = '';
+  for (let i = 0; i < 4; i++) {
+    suffix += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return `ORD-${datePart}-${suffix}`;
+}
+
+/**
+ * Validate email with a more robust check than just includes('@')
+ */
+export function isValidEmail(email: string): boolean {
+  // RFC 5322 simplified - good enough for 99.9% of cases
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
