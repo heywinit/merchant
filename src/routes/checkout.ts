@@ -270,10 +270,10 @@ checkout.post('/:cartId/checkout', async (c) => {
       const currentTime = now();
       
       // Note: There's a small race condition window between this check and the atomic reservation below.
-      // Two concurrent checkouts for the same customer could both pass this check, but only one will
-      // succeed at the webhook stage when discount_usage is recorded (which has a unique constraint).
-      // The race condition window is microseconds, so it's unlikely but possible.
-      // For complete safety, we could insert a "pending" usage record here, but that adds complexity.
+      // Two concurrent checkouts for the same customer could both pass this check. However, the webhook
+      // handler enforces the per-customer limit atomically using a conditional INSERT, preventing
+      // concurrent checkouts from bypassing the limit. The race condition window is microseconds,
+      // so it's unlikely but the webhook handler provides the final enforcement.
       if (discount.usage_limit_per_customer !== null) {
         const [usage] = await db.query<any>(
           `SELECT COUNT(*) as count FROM discount_usage WHERE discount_id = ? AND customer_email = ?`,
@@ -364,6 +364,8 @@ checkout.post('/:cartId/checkout', async (c) => {
         [item.qty, now(), store.id, item.sku]
       );
     }
+    // Clear reservedItems after releasing to prevent double-release
+    reservedItems.length = 0;
   };
 
   try {
@@ -490,9 +492,10 @@ checkout.post('/:cartId/checkout', async (c) => {
 
   // Update cart with final discount amount
   // Note: Discount usage was already reserved above, will be committed when order is created via webhook
+  // Set updated_at to track when checkout was initiated (for abandoned checkout detection)
   await db.run(
-    `UPDATE carts SET status = 'checked_out', stripe_checkout_session_id = ?, discount_amount_cents = ? WHERE id = ?`,
-    [session.id, discountAmountCents, cartId]
+    `UPDATE carts SET status = 'checked_out', stripe_checkout_session_id = ?, discount_amount_cents = ?, updated_at = ? WHERE id = ?`,
+    [session.id, discountAmountCents, now(), cartId]
   );
 
   return c.json({

@@ -84,7 +84,8 @@ CREATE TABLE IF NOT EXISTS carts (
   discount_id TEXT REFERENCES discounts(id),
   discount_amount_cents INTEGER DEFAULT 0,
   expires_at TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 -- Cart Items

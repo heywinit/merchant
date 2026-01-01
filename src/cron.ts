@@ -40,9 +40,10 @@ export async function handleCron(env: Env, ctx: ExecutionContext) {
 
   // These represent checkout sessions that were created but webhook never arrived
   // Release their reserved discount usage and inventory
+  // Use updated_at (when checkout was initiated) instead of created_at (when cart was created)
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
   const abandonedCheckouts = await db.query<any>(
-    `SELECT * FROM carts WHERE status = 'checked_out' AND created_at < ? AND stripe_checkout_session_id IS NOT NULL`,
+    `SELECT * FROM carts WHERE status = 'checked_out' AND updated_at < ? AND stripe_checkout_session_id IS NOT NULL`,
     [oneHourAgo]
   );
 

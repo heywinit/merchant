@@ -362,8 +362,8 @@ discountRoutes.post('/', adminOnly, async (c) => {
       max_discount_cents || null,
       starts_at || null,
       expires_at || null,
-      usage_limit || null,
-      usage_limit_per_customer ?? 1,
+      usage_limit ?? null,
+      usage_limit_per_customer ?? null,
       stripeCouponId,
       stripePromotionCodeId,
       timestamp,
@@ -467,11 +467,11 @@ discountRoutes.patch('/:id', adminOnly, async (c) => {
   }
   if (usage_limit !== undefined) {
     updates.push('usage_limit = ?');
-    params.push(usage_limit || null);
+    params.push(usage_limit ?? null);
   }
   if (usage_limit_per_customer !== undefined) {
     updates.push('usage_limit_per_customer = ?');
-    params.push(usage_limit_per_customer || null);
+    params.push(usage_limit_per_customer ?? null);
   }
 
   if (updates.length > 0) {

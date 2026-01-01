@@ -84,7 +84,8 @@ CREATE TABLE carts (
   discount_id UUID REFERENCES discounts(id),
   discount_amount_cents INTEGER DEFAULT 0,
   expires_at TIMESTAMPTZ NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 -- Cart Items

@@ -336,32 +336,8 @@ ordersRoutes.post('/test', async (c) => {
     );
   }
 
-  // Generate order number (timestamp-based to avoid race conditions)
-  const orderNumber = generateOrderNumber();
-  const orderId = uuid();
-
-  // Create order (with customer link and discount)
-  await db.run(
-    `INSERT INTO orders (id, store_id, customer_id, number, status, customer_email, subtotal_cents, tax_cents, shipping_cents, total_cents, discount_code, discount_id, discount_amount_cents, created_at)
-     VALUES (?, ?, ?, ?, 'paid', ?, ?, 0, 0, ?, ?, ?, ?, ?)`,
-    [orderId, store.id, customerId, orderNumber, customer_email, subtotal, totalCents, discountCode, discountId, discountAmountCents, timestamp]
-  );
-
-  // Create order items and deduct inventory
-  for (const item of orderItems) {
-    await db.run(
-      `INSERT INTO order_items (id, order_id, sku, title, qty, unit_price_cents) VALUES (?, ?, ?, ?, ?, ?)`,
-      [uuid(), orderId, item.sku, item.title, item.qty, item.unit_price_cents]
-    );
-
-    // Deduct from on_hand (not reserved since this bypasses checkout)
-    await db.run(
-      `UPDATE inventory SET on_hand = on_hand - ?, updated_at = ? WHERE store_id = ? AND sku = ?`,
-      [item.qty, timestamp, store.id, item.sku]
-    );
-  }
-
-  // Track discount usage if discount was applied
+  // Reserve discount usage atomically BEFORE creating order or deducting inventory
+  // This ensures that if the reservation fails, no order or inventory changes are committed
   if (discount && discountAmountCents > 0) {
     const currentTime = now();
     
@@ -379,6 +355,7 @@ ordersRoutes.post('/test', async (c) => {
     }
     
     // Atomically increment usage_count only if within global limit
+    // This must happen BEFORE order creation to prevent data inconsistency
     if (discount.usage_limit !== null) {
       const result = await db.run(
         `UPDATE discounts 
@@ -410,8 +387,37 @@ ordersRoutes.post('/test', async (c) => {
         throw ApiError.invalidRequest('Discount is no longer valid');
       }
     }
+  }
 
-    // Record usage for per-customer tracking
+  // Generate order number (timestamp-based to avoid race conditions)
+  const orderNumber = generateOrderNumber();
+  const orderId = uuid();
+
+  // Create order (with customer link and discount)
+  // Discount usage has already been reserved atomically above
+  await db.run(
+    `INSERT INTO orders (id, store_id, customer_id, number, status, customer_email, subtotal_cents, tax_cents, shipping_cents, total_cents, discount_code, discount_id, discount_amount_cents, created_at)
+     VALUES (?, ?, ?, ?, 'paid', ?, ?, 0, 0, ?, ?, ?, ?, ?)`,
+    [orderId, store.id, customerId, orderNumber, customer_email, subtotal, totalCents, discountCode, discountId, discountAmountCents, timestamp]
+  );
+
+  // Create order items and deduct inventory
+  for (const item of orderItems) {
+    await db.run(
+      `INSERT INTO order_items (id, order_id, sku, title, qty, unit_price_cents) VALUES (?, ?, ?, ?, ?, ?)`,
+      [uuid(), orderId, item.sku, item.title, item.qty, item.unit_price_cents]
+    );
+
+    // Deduct from on_hand (not reserved since this bypasses checkout)
+    await db.run(
+      `UPDATE inventory SET on_hand = on_hand - ?, updated_at = ? WHERE store_id = ? AND sku = ?`,
+      [item.qty, timestamp, store.id, item.sku]
+    );
+  }
+
+  // Record discount usage for per-customer tracking and audit purposes
+  // The usage_count was already incremented atomically above, this just records the usage
+  if (discount && discountAmountCents > 0) {
     const [existingUsage] = await db.query<any>(
       `SELECT id FROM discount_usage WHERE order_id = ? AND discount_id = ?`,
       [orderId, discountId]

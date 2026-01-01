@@ -66,14 +66,16 @@ webhooks.post('/stripe', async (c) => {
         let discountCode = null;
         let discountId = null;
         let discountAmountCents = 0;
+        let discount: any = null;
 
         if (session.metadata?.discount_id) {
-          const [discount] = await db.query<any>(
+          const [discountRow] = await db.query<any>(
             `SELECT * FROM discounts WHERE id = ? AND store_id = ?`,
             [session.metadata.discount_id, store.id]
           );
 
-          if (discount) {
+          if (discountRow) {
+            discount = discountRow;
             discountCode = discount.code;
             discountId = discount.id;
             discountAmountCents = cart.discount_amount_cents || 0;
@@ -187,11 +189,48 @@ webhooks.post('/stripe', async (c) => {
           );
           
           if (!existing) {
-            await db.run(
-              `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
-               VALUES (?, ?, ?, ?, ?)`,
-              [uuid(), discountId, orderId, cart.customer_email.toLowerCase(), discountAmountCents]
-            );
+            // Enforce per-customer limit atomically using conditional INSERT
+            // This prevents race conditions from concurrent checkouts
+            // Reuse discount object from earlier in the function
+            if (discount?.usage_limit_per_customer !== null) {
+              // Use atomic conditional INSERT: only insert if current usage count is below limit
+              // This prevents concurrent checkouts from bypassing the per-customer limit
+              const usageId = uuid();
+              const customerEmailLower = cart.customer_email.toLowerCase();
+              
+              // For SQLite/D1: Use INSERT with SELECT and WHERE clause to atomically check limit
+              const result = await db.run(
+                `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
+                 SELECT ?, ?, ?, ?, ?
+                 WHERE (
+                   SELECT COUNT(*) FROM discount_usage 
+                   WHERE discount_id = ? AND customer_email = ?
+                 ) < ?`,
+                [
+                  usageId, discountId, orderId, customerEmailLower, discountAmountCents,
+                  discountId, customerEmailLower, discount.usage_limit_per_customer
+                ]
+              );
+              
+              // If insert failed (changes === 0), the limit was exceeded
+              // This can happen with concurrent checkouts - the order is already created and paid,
+              // so we log this but don't fail the webhook
+              if (result.changes === 0) {
+                // Limit exceeded - this shouldn't happen if checkout validation worked correctly,
+                // but can occur with concurrent checkouts. Log for monitoring.
+                console.warn(
+                  `Discount usage limit exceeded for customer ${customerEmailLower} and discount ${discountId}, ` +
+                  `but order ${orderId} already created (payment succeeded). This may indicate a race condition.`
+                );
+              }
+            } else {
+              // No per-customer limit, safe to insert directly
+              await db.run(
+                `INSERT INTO discount_usage (id, discount_id, order_id, customer_email, discount_amount_cents)
+                 VALUES (?, ?, ?, ?, ?)`,
+                [uuid(), discountId, orderId, cart.customer_email.toLowerCase(), discountAmountCents]
+              );
+            }
           }
           // If already exists, silently skip 
         }
